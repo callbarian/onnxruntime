@@ -1,8 +1,8 @@
 ARG UBUNTU_VERSION=20.04
-FROM python:3.7
+FROM ubuntu:${UBUNTU_VERSION}
 
 ARG OPENVINO_VERSION=2022.2.0
-ARG PYTHON_VERSION=3.7
+ARG PYTHON_VERSION=3.8
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \

@@ -70,6 +70,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
     if [ "$PYTHON_VER" != "3.8" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
+	apt install -y python${PYTHON_VER}-distutils
         apt-get install -y --no-install-recommends \
                 python${PYTHON_VER} \
                 python${PYTHON_VER}-dev

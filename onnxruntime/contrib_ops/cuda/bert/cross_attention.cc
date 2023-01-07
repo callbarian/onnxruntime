@@ -88,11 +88,9 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
-    // The kernel has no limit on sequence length, and it just check whether the kernel has been loaded.
+    // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
     if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
       fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
-    } else {
-      use_fused_cross_attention = false;
     }
   } else {
     bool use_fused_runner = !disable_fused_runner_ &&
@@ -129,7 +127,7 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
-                                                   use_fused_cross_attention);
+                                                   fused_cross_attention_kernel != nullptr);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;

@@ -1403,28 +1403,25 @@ void GetBias_3_64(std::vector<float>& bias_data) {
       -0.00513f, -0.006042f, 0.007645f};
 }
 
-void SampleAttentionWeight(std::vector<float>& data, std::vector<float>& output, size_t elements, size_t start_offset, size_t step){
-  size_t data_length = data.size();
+void SampleAttentionWeight(std::vector<float>& data, std::vector<float>& output, int elements, int start_offset, int step) {
+  int data_length = static_cast<int>(data.size());
 
   output.resize(elements);
-  size_t index = start_offset;
-  for (size_t i = 0; i < elements; i++) {
-    if (index > data_length) {
-      index = index % data_length;
-    }
-
+  int index = start_offset;
+  for (int i = 0; i < elements; i++) {
+    index = index % data_length;
     output[i] = data[index];
     index += step;
   }
 }
 
-void GetAttentionWeight(std::vector<float>& weight_data, size_t elements, size_t start_offset, size_t step) {
+void GetAttentionWeight(std::vector<float>& weight_data, int elements, int start_offset, int step) {
   std::vector<float> data;
   GetWeight_64_3_64(data);
   SampleAttentionWeight(data, weight_data, elements, start_offset, step);
 }
 
-void GetAttentionBias(std::vector<float>& bias_data, size_t elements, size_t start_offset, size_t step) {
+void GetAttentionBias(std::vector<float>& bias_data, int elements, int start_offset, int step) {
   std::vector<float> data;
   GetBias_3_64(data);
   SampleAttentionWeight(data, bias_data, elements, start_offset, step);

@@ -97,7 +97,7 @@ class TSharedCubinKernel {
     loadCubinKernels(mSM);
   }
 
-  bool isValid(int32_t s) const {
+  bool isValid(int32_t /*s*/) const {
     return !mFunctions.empty();
   }
 

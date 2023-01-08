@@ -921,7 +921,7 @@ TEST(AttentionTest, Causal_EmptyPastState) {
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kEnableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
@@ -932,7 +932,7 @@ TEST(AttentionTest, Causal_EmptyPastState) {
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kEnableFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
@@ -943,7 +943,7 @@ TEST(AttentionTest, Causal_EmptyPastState) {
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kEnableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,

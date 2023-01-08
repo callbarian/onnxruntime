@@ -40,7 +40,10 @@ CrossAttention<T>::CrossAttention(const OpKernelInfo& info)
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
   enable_flash_attention_ = sizeof(T) == 2 &&
-                            ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFlashAttention, true);
+                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+
+  disable_fused_cross_attention_ = sizeof(T) != 2 ||
+                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
 }
 
 template <typename T>
@@ -80,7 +83,8 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
   bool use_fused_cross_attention = !disable_fused_runner_ &&
-                                   (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
+                                   nullptr == key_padding_mask &&
+                                   parameters.hidden_size == parameters.v_hidden_size &&
                                    has_fused_cross_attention_kernel(sm, parameters.head_size);
   if (use_fused_cross_attention) {
     if (fused_fp16_cross_attention_kernel_ == nullptr) {

@@ -91,7 +91,7 @@ size_t GetAttentionWorkspaceSize(
 
   if (use_fused_cross_attention) {
     size_t q_sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), false);  // Q has no padding
-    size_t k_sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);   // K might have padding
+    size_t k_sequence_offset_bytes = q_sequence_offset_bytes;                                     // K has no padding
     return qkv_bytes + q_sequence_offset_bytes + k_sequence_offset_bytes;
   }
 
@@ -342,6 +342,10 @@ Status QkvToContext(
     LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+    // We only enable fused cross attention when there is no key padding mask.
+    // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
+    ORT_ENFORCE(data.mask_index == nullptr);
+
     int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
     LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -350,17 +354,17 @@ Status QkvToContext(
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
 
     run_fused_cross_attention(
-        data.query,              // Q in device
-        data.workspace,          // KV in device
-        q_sequence_offset,       // cumulated sequence length of Q in device
-        kv_sequence_offset,      // cumulated sequence length of KV in device
-        data.output,             // output in device
+        q,                       // Q
+        k,                       // packed KV
+        q_sequence_offset,       // cumulated sequence length of Q
+        kv_sequence_offset,      // cumulated sequence length of KV
+        data.output,             // output
         cross_attention_kernel,  // kernels
         batch_size,              // batch size
         num_heads,               // number of heads
-        qk_head_size,            // head size
+        qk_head_size,            // head size of Q/K/V
         sequence_length,         // sequence length of Q
-        kv_sequence_length,      // sequence lenth of KV
+        kv_sequence_length,      // sequence length of KV
         stream);
     return Status::OK();
   }

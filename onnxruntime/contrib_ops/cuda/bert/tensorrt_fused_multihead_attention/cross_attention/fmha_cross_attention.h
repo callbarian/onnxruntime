@@ -268,10 +268,12 @@ using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCross
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Below are public interface
 
-inline bool has_fused_cross_attention_kernel(int sm, int head_size) {
+inline bool has_fused_cross_attention_kernel(int sm, int head_size, int kv_sequence_length) {
   constexpr int min_head_size = 32;
   const int max_head_size = (sm == 75 ? 64 : 256);
-  return (sm == 75 || sm == 80 || sm == 86 || sm == 89) && (head_size > min_head_size) && (head_size <= max_head_size);
+  return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
+         (head_size > min_head_size) && (head_size <= max_head_size) &&
+         (kv_sequence_length <= 128); // TODO: shall we remove this constraint on kv_sequence_length?
 }
 
 inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(int32_t sm) {

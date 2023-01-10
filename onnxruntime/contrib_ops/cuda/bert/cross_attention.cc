@@ -85,7 +85,8 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
-                                   has_fused_cross_attention_kernel(sm, parameters.head_size);
+                                   has_fused_cross_attention_kernel(sm, parameters.head_size,
+                                                                    parameters.kv_sequence_length);
   if (use_fused_cross_attention) {
     if (fused_fp16_cross_attention_kernel_ == nullptr) {
       fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);

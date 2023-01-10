@@ -297,14 +297,14 @@ Status QkvToContext(
   } else {  // gemm_buffer == nullptr
     ORT_ENFORCE(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
-    dumper.Print("query", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-    dumper.Print("query_bias", data.bias, 1, num_heads * qk_head_size);
+    dumper.Print("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
+    dumper.Print("query_bias", data.bias, num_heads, qk_head_size);
 
-    dumper.Print("key", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
-    dumper.Print("key_bias", data.bias + num_heads * qk_head_size, 1, num_heads * qk_head_size);
+    dumper.Print("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
+    dumper.Print("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
 
-    dumper.Print("value", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
-    dumper.Print("value_bias", data.bias + 2 * num_heads * qk_head_size, 1, num_heads * v_head_size);
+    dumper.Print("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
+    dumper.Print("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
 
     if (fused_cross_attention_kernel != nullptr) {
       ORT_ENFORCE(qk_head_size == v_head_size);
@@ -317,8 +317,8 @@ Status QkvToContext(
           num_heads, qk_head_size,
           data.bias, data.query, data.key, data.value, qkv, true, kv_sequence_length);
 
-          dumper.Print("q(BSNH)", q, batch_size, sequence_length, num_heads, qk_head_size);
-          dumper.Print("kv(BSN2H)", k, batch_size* kv_sequence_length, num_heads, 2, v_head_size);
+          dumper.Print("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+          dumper.Print("kv(BSN2H)", k, batch_size * kv_sequence_length, num_heads, 2, v_head_size);
     } else if (use_fused_kernel) {
       ORT_ENFORCE(qk_head_size == v_head_size);
 
@@ -349,9 +349,9 @@ Status QkvToContext(
                                 data.value, data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1, nullptr);
 
-      dumper.Print("q(BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
-      dumper.Print("k(BNSH)", k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      dumper.Print("v(BNSH)", v, batch_size, num_heads, kv_sequence_length, v_head_size);
+      dumper.Print("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
+      dumper.Print("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
+      dumper.Print("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
     }
 
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -378,21 +378,22 @@ Status QkvToContext(
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
 
+    constexpr int packed_kv_sequence_length = 128; // TODO: do we need this?
     run_fused_cross_attention(
-        q,                       // Q
-        k,                       // packed KV
-        q_sequence_offset,       // cumulated sequence length of Q
-        kv_sequence_offset,      // cumulated sequence length of KV
-        data.output,             // output
-        cross_attention_kernel,  // kernels
-        batch_size,              // batch size
-        num_heads,               // number of heads
-        qk_head_size,            // head size of Q/K/V
-        sequence_length,         // sequence length of Q
-        kv_sequence_length,      // sequence length of KV
+        q,                          // Q
+        k,                          // packed KV
+        q_sequence_offset,          // cumulated sequence length of Q
+        kv_sequence_offset,         // cumulated sequence length of KV
+        data.output,                // output
+        cross_attention_kernel,     // kernels
+        batch_size,                 // batch size
+        num_heads,                  // number of heads
+        qk_head_size,               // head size of Q/K/V
+        sequence_length,            // sequence length of Q
+        packed_kv_sequence_length,  // sequence length of KV
         stream);
 
-    dumper.Print("output", data.output, batch_size, sequence_length, num_heads, v_head_size);
+    dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 
@@ -413,9 +414,11 @@ Status QkvToContext(
 
     if (use_fused_kernel) {
       fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
+      dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
       return Status::OK();
     } else {
       fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+      dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     }
   }
 
@@ -528,8 +531,10 @@ Status QkvToContext(
       &zero, temp_output, v_head_size, size_per_batch_v, batches, device_prop));
 
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
-  return LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
-                        max_threads_per_block, false, temp_output, data.output);
+  Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
+                                 max_threads_per_block, false, temp_output, data.output);
+  dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  return result;
 }
 
 template <typename T>

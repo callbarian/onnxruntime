@@ -82,7 +82,7 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
-  bool use_fused_cross_attention = !disable_fused_runner_ &&
+  bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
                                    has_fused_cross_attention_kernel(sm, parameters.head_size);

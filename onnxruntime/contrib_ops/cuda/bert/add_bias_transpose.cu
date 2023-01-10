@@ -148,12 +148,11 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size,
 }
 
 template <typename T>
-__global__ void AddBiasTransposeTrtCross(const T* query, const T* key, const T* value, const T* biases, T* output) {
-  // Separated Q/K/V inputs for TensorRT fused cross attention (N*H <= 1024)
-  //     Q:  BxSxNxH
+__global__ void AddBiasTransposeTrtKV(const T* key, const T* value, const T* biases, T* output) {
+  // Separated K/V inputs for TensorRT fused cross attention (N*H <= 1024)
   //     K:  BxSxNxH
   //     V:  BxSxNxH
-  //     Output: BxSxNxH (Q), BxSxNxMxH (packed KV)
+  //     Output: BxSxNxMxH (packed KV, requires H = H_v)
   // B is batch_size, S is sequence_length, M is number of matrices (2), N is num_heads, H is head_size
 
   int n = threadIdx.y;
@@ -164,31 +163,24 @@ __global__ void AddBiasTransposeTrtCross(const T* query, const T* key, const T* 
   const int H = blockDim.x;
   const int N = blockDim.y;
   const int S = gridDim.x;
-
   const int NH = N * H;
-  const int in_offset = (b * S + s) * NH + n * H;
-  if (m == 0) {  // query
-    const int h = threadIdx.x;
-    if (h < H) {
-      output[in_offset + h] = query[in_offset + h] + biases[n * H + h];
-    }
-  } else {  // key or value
-    const T* input = (m == 1 ? key : value);
-    const int B = gridDim.y;
-    const int M = gridDim.z - 1;  // M is 2 here
-    const int out_offset = B * S * NH + (b * S + s) * M * NH + (n * M + (m - 1)) * H;
 
-    const int h = threadIdx.x;
-    if (h < H) {
-      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
-    }
+  const int in_offset = (b * S + s) * NH + n * H;
+  const T* input = (m == 0 ? key : value);
+
+  constexpr int M = 2;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
+
+  const int h = threadIdx.x;
+  if (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(m + 1) * NH + n * H + h];
   }
 }
 
 template <typename T>
-__global__ void AddBiasTransposeTrtCrossLarge(const int head_size,
-                                              const T* query, const T* key, const T* value, const T* biases,
-                                              T* output) {
+__global__ void AddBiasTransposeTrtKVLarge(const int head_size,
+                                           const T* key, const T* value, const T* biases,
+                                           T* output) {
   // Separated K/V inputs for TensorRT fused cross attention (N*H > 1024)
   int n = threadIdx.y;
   int s = blockIdx.x;
@@ -199,26 +191,18 @@ __global__ void AddBiasTransposeTrtCrossLarge(const int head_size,
   const int H = head_size;
   const int N = blockDim.y;
   const int S = gridDim.x;
-
   const int NH = N * H;
+
   const int in_offset = (b * S + s) * NH + n * H;
+  const T* input = (m == 0 ? key : value);
+
+  constexpr int M = 2;
+  const int out_offset = (b * S + s) * M * NH + (n * M + m) * H;
 
   int h = threadIdx.x;
-  if (m == 0) {  // query
-    while (h < H) {
-      output[in_offset + h] = query[in_offset + h] + biases[n * H + h];
-      h += stride;
-    }
-  } else {  // key or value
-    const T* input = (m == 1 ? key : value);
-    const int B = gridDim.y;
-    const int M = gridDim.z - 1;  // M is 2 here
-    const int out_offset = B * S * NH + (b * S + s) * M * NH + (n * M + (m - 1)) * H;
-
-    while (h < H) {
-      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
-      h += stride;
-    }
+  while (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[(m + 1) * NH + n * H + h];
+    h += stride;
   }
 }
 
@@ -503,11 +487,13 @@ template <typename T>
 void InvokeAddBiasTransposeTrt(
     cudaStream_t stream, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-    const T* biases, const T* query, const T* key, const T* value, T* output, bool is_cross_attention) {
-  constexpr int num_matrices = 3;
-  const dim3 grid(sequence_length, batch_size, num_matrices);
+    const T* biases, const T* query, const T* key, const T* value, T* output,
+    bool is_cross_attention, int kv_sequence_length) {
 
   if (!is_cross_attention) {
+    ORT_ENFORCE(sequence_length == kv_sequence_length);
+    constexpr int num_matrices = 3;
+    const dim3 grid(sequence_length, batch_size, num_matrices);
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, key, value, biases, output);
@@ -516,12 +502,31 @@ void InvokeAddBiasTransposeTrt(
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, key, value, biases, output);
     }
   } else {  // cross attention
-    if (head_size * num_heads <= max_threads_per_block) {
-      const dim3 block(head_size, num_heads, 1);
-      AddBiasTransposeTrtCross<T><<<grid, block, 0, stream>>>(query, key, value, biases, output);
-    } else {
-      const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-      AddBiasTransposeTrtCrossLarge<T><<<grid, block, 0, stream>>>(head_size, query, key, value, biases, output);
+    // Q: add bias
+    {
+      constexpr int num_matrices = 1;
+      const dim3 grid(sequence_length, batch_size, num_matrices);
+      if (head_size * num_heads <= max_threads_per_block) {
+        const dim3 block(head_size, num_heads, 1);
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, output);
+      } else {
+        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, output);
+      }
+    }
+
+    // KV: add bias and pack kv
+    {
+      constexpr int num_matrices = 2;
+      const dim3 grid(kv_sequence_length, batch_size, num_matrices);
+      T* packed_kv = output + batch_size * sequence_length * num_heads * head_size;
+      if (head_size * num_heads <= max_threads_per_block) {
+        const dim3 block(head_size, num_heads, 1);
+        AddBiasTransposeTrtKV<T><<<grid, block, 0, stream>>>(key, value, biases, packed_kv);
+      } else {
+        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        AddBiasTransposeTrtKVLarge<T><<<grid, block, 0, stream>>>(head_size, key, value, biases, packed_kv);
+      }
     }
   }
 }
@@ -532,7 +537,7 @@ void LaunchAddBiasTransposeTrt(
     const int batch_size, const int sequence_length,
     const int num_heads, const int head_size,
     const float* biases, const float* query, const float* key, const float* value, float* output,
-    bool is_cross_attention) {
+    bool is_cross_attention, int kv_sequence_length) {
   ORT_ENFORCE(false, "Shall not call this since fused kernel does not support float input.");
 }
 
@@ -542,7 +547,7 @@ void LaunchAddBiasTransposeTrt(
     const int batch_size, const int sequence_length,
     const int num_heads, const int head_size,
     const half* biases, const half* query, const half* key, const half* value, half* output,
-    bool is_cross_attention) {
+    bool is_cross_attention, int kv_sequence_length) {
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
     const Half4* query2 = reinterpret_cast<const Half4*>(query);
@@ -552,7 +557,7 @@ void LaunchAddBiasTransposeTrt(
     Half4* output2 = reinterpret_cast<Half4*>(output);
     InvokeAddBiasTransposeTrt<Half4>(stream, max_threads_per_block,
                                      batch_size, sequence_length, num_heads, H,
-                                     biases2, query2, key2, value2, output2, is_cross_attention);
+                                     biases2, query2, key2, value2, output2, is_cross_attention, kv_sequence_length);
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* query2 = reinterpret_cast<const half2*>(query);
@@ -562,11 +567,11 @@ void LaunchAddBiasTransposeTrt(
     half2* output2 = reinterpret_cast<half2*>(output);
     InvokeAddBiasTransposeTrt<half2>(stream, max_threads_per_block,
                                      batch_size, sequence_length, num_heads, H,
-                                     biases2, query2, key2, value2, output2, is_cross_attention);
+                                     biases2, query2, key2, value2, output2, is_cross_attention, kv_sequence_length);
   } else {
     InvokeAddBiasTransposeTrt<half>(stream, max_threads_per_block,
                                     batch_size, sequence_length, num_heads, head_size,
-                                    biases, query, key, value, output, is_cross_attention);
+                                    biases, query, key, value, output, is_cross_attention, kv_sequence_length);
   }
 }
 

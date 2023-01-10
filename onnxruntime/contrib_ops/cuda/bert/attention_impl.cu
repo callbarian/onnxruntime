@@ -38,6 +38,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -271,6 +272,7 @@ Status QkvToContext(
   bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
+  transformers::CudaTensorConsoleDumper dumper;
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
       // For quantized attention, bias has been added so only need transpose here.
@@ -295,23 +297,38 @@ Status QkvToContext(
   } else {  // gemm_buffer == nullptr
     ORT_ENFORCE(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
+    dumper.Print("query", data.query, batch_size, sequence_length, num_heads, qk_head_size);
+    dumper.Print("query_bias", data.bias, 1, num_heads * qk_head_size);
+
+    dumper.Print("key", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
+    dumper.Print("key_bias", data.bias + num_heads * qk_head_size, 1, num_heads * qk_head_size);
+
+    dumper.Print("value", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
+    dumper.Print("value_bias", data.bias + 2 * num_heads * qk_head_size, 1, num_heads * v_head_size);
+
     if (fused_cross_attention_kernel != nullptr) {
+      ORT_ENFORCE(qk_head_size == v_head_size);
+
       // For fused cross attention, besides adding bias, K and V needed to be packed:
       //   K (BxSxNxH), V (BxSxNxH) => BxSxNx2xH
       LaunchAddBiasTransposeTrt(
           stream, max_threads_per_block,
           batch_size, sequence_length,
           num_heads, qk_head_size,
-          data.bias, data.query, data.key, data.value, qkv, true);
+          data.bias, data.query, data.key, data.value, qkv, true, kv_sequence_length);
+
+          dumper.Print("q(BSNH)", q, batch_size, sequence_length, num_heads, qk_head_size);
+          dumper.Print("kv(BSN2H)", k, batch_size* kv_sequence_length, num_heads, 2, v_head_size);
     } else if (use_fused_kernel) {
-      ORT_ENFORCE(sequence_length == kv_sequence_length && qk_head_size == v_head_size);
+      ORT_ENFORCE(qk_head_size == v_head_size);
 
       // Q (BxSxNxH), K (BxSxNxH), V (BxSxNxH) => BxSxNx(H + H + H)
       LaunchAddBiasTransposeTrt(
           stream, max_threads_per_block,
           batch_size, sequence_length,
           num_heads, qk_head_size,
-          data.bias, data.query, data.key, data.value, qkv, false);
+          data.bias, data.query, data.key, data.value, qkv, false, kv_sequence_length);
+      dumper.Print("qkv(BSN3H)", qkv, batch_size, sequence_length, num_heads, 2 * qk_head_size + v_head_size);
     } else {
       // Query (BxSxNxH) => Q (BxNxSxH)
       constexpr int format = 0;
@@ -331,16 +348,22 @@ Status QkvToContext(
                                 batch_size, kv_sequence_length, num_heads, v_head_size,
                                 data.value, data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1, nullptr);
+
+      dumper.Print("q(BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
+      dumper.Print("k(BNSH)", k, batch_size, num_heads, kv_sequence_length, qk_head_size);
+      dumper.Print("v(BNSH)", v, batch_size, num_heads, kv_sequence_length, v_head_size);
     }
 
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
+  T* scratch1 = qkv + elements_q + elements_k + elements_v;
   if (fused_cross_attention_kernel != nullptr) {
-    T* scratch = reinterpret_cast<T*>(data.workspace) + elements_k + elements_v;
-    int* q_sequence_offset = reinterpret_cast<int*>(scratch);
+    int* q_sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    dumper.Print("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
 
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
@@ -349,6 +372,8 @@ Status QkvToContext(
     int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
     LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    dumper.Print("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
 
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
@@ -366,10 +391,12 @@ Status QkvToContext(
         sequence_length,         // sequence length of Q
         kv_sequence_length,      // sequence length of KV
         stream);
+
+    dumper.Print("output", data.output, batch_size, sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 
-  T* scratch1 = qkv + elements_q + elements_k + elements_v;
+
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);

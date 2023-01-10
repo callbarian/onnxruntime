@@ -121,7 +121,6 @@ extern unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
 extern unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
 extern unsigned char cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin[];
 
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin[];
 extern unsigned char cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin[];
 extern unsigned char cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin[];
 extern unsigned char cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin[];
@@ -135,7 +134,6 @@ extern uint32_t cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len;
 extern uint32_t cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin_len;
 extern uint32_t cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin_len;
 
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin_len;
 extern uint32_t cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin_len;
 extern uint32_t cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin_len;
 extern uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
@@ -159,8 +157,6 @@ static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
 } sMhaKernelMetaInfos[] = {
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel", 40960, 128, 0, false},
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel_nl", 36864, 128, 32, false},
-    {DATA_TYPE_FP16, 128, 128, kSM_75, cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin_len, "fmha_mhca_fp16_128_128_sm75_kernel", 81920, 128, 0, false},
-    {DATA_TYPE_FP16, 128, 128, kSM_75, cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_128_sm75_cu_cubin_len, "fmha_mhca_fp16_128_128_sm75_kernel_nl", 40960, 128, 32, false},
 
     {DATA_TYPE_FP16, 128, 64, kSM_80, cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len, "fmha_mhca_fp16_128_64_sm80_kernel", 49152, 128, 0, false},
     {DATA_TYPE_FP16, 128, 64, kSM_80, cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len, "fmha_mhca_fp16_128_64_sm80_kernel_nl", 49152, 128, 64, false},
@@ -242,23 +238,22 @@ class FusedMultiHeadCrossAttentionKernel
             pMetaStart, nMetaCount, type, sm) {
   }
 
-  uint64_t hashID(int32_t s, int32_t headsize, bool interleaved, bool unroll) const {
+  uint64_t hashID(int32_t headsize, bool interleaved, bool unroll) const {
     // we only have 30 bits room for head size
     ORT_ENFORCE(headsize <= 0x3FFFFFFF);
-    return static_cast<uint64_t>(s) << 32 | (headsize << 2) | (interleaved ? 2U : 0U) | (unroll ? 1U : 0U);
+    return (headsize << 2) | (interleaved ? 2U : 0U) | (unroll ? 1U : 0U);
   }
 
   uint64_t hashID(Fused_multihead_attention_params_mhca const& param) const {
-    return hashID(param.s, param.d_padded, param.interleaved, param.force_unroll);
+    return hashID(param.d_padded, param.interleaved, param.force_unroll);
   }
 
   uint64_t hashID(KernelMeta const& kernelMeta) const {
-    return hashID(kernelMeta.mS, kernelMeta.mD, kernelMeta.mInterleaved, kernelMeta.mUnrollStep > 0);
+    return hashID(kernelMeta.mD, kernelMeta.mInterleaved, kernelMeta.mUnrollStep > 0);
   }
 
   void dumpHashId(Fused_multihead_attention_params_mhca const& param, std::ostringstream& message) const override {
-    message << "\t s: " << param.s << "\n"
-            << "\t d_padded: " << param.d_padded << "\n"
+    message << "\t d_padded: " << param.d_padded << "\n"
             << "\t interleaved: " << param.interleaved << "\n"
             << "\t force_unroll: " << param.force_unroll << "\n";
   }
@@ -275,7 +270,7 @@ using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCross
 
 inline bool has_fused_cross_attention_kernel(int sm, int head_size) {
   constexpr int min_head_size = 32;
-  const int max_head_size = (sm == 75 ? 128 : 256);
+  const int max_head_size = (sm == 75 ? 64 : 256);
   return (sm == 75 || sm == 80 || sm == 86 || sm == 89) && (head_size > min_head_size) && (head_size <= max_head_size);
 }
 

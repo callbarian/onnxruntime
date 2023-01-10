@@ -132,36 +132,26 @@ static void RunCrossAttentionTestEnv(
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_rocm = true) {
-  // Unfused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"}}};
-    RunCrossAttentionTest(
-        query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
-        number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
-  }
-
-  // Fused kernel (enable flash attention)
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
-    RunCrossAttentionTest(
-        query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
-        number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
-  }
-
-  // Fused kernel (disable flash attention)
+  // Enable fused kernel (default setting)
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
+            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"}}};
+    RunCrossAttentionTest(
+        query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
+        number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
+        use_float16, disable_cpu, disable_cuda, disable_rocm);
+  }
+
+  // Unfused kernel only
+  {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"}}};
     RunCrossAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
@@ -213,7 +203,7 @@ TEST(CrossAttentionTest, CrossAttention_NoMask) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
-  constexpr int hidden_size = 64;
+  constexpr int hidden_size = 64; // head size 32 will not trigger fused cross attention kernel
   constexpr int v_hidden_size = 64;
   constexpr int number_of_heads = 2;
 
@@ -418,6 +408,132 @@ TEST(CrossAttentionTest, CrossAttention_Batch2_HiddenSizeV) {
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
+
+// The following tests fused cross attention kernel
+// It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
+TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int kv_sequence_length = 4;
+  constexpr int hidden_size = 80;
+  constexpr int v_hidden_size = hidden_size;
+  constexpr int number_of_heads = 2;
+
+  std::vector<float> query_data;
+  GetAttentionWeight(query_data, batch_size * sequence_length * hidden_size, 1, 3);
+
+  std::vector<float> key_data;
+  GetAttentionWeight(key_data, batch_size * kv_sequence_length * hidden_size, 2, 2);
+
+  std::vector<float> value_data;
+  GetAttentionWeight(value_data, batch_size * kv_sequence_length * v_hidden_size, 3, 1);
+
+  std::vector<float> bias_data;
+  GetAttentionBias(bias_data, 2 * hidden_size + v_hidden_size);
+
+  std::vector<int32_t> key_padding_mask_data = {};
+  constexpr AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
+
+  std::vector<float> output_data = {
+      0.0051651001f, 0.0018806458f, 0.0060958862f, 0.011238098f, 0.0052108765f, 0.0048828125f, -0.002166748f,
+      0.0025062561f, -0.0097122192f, 0.0047149658f, 0.00036144257f, 0.0065689087f, -0.01020813f, 0.0040359497f,
+      0.003616333f, -0.0036220551f, 0.00026226044f, 0.00015211105f, -0.00035095215f, -0.011680603f, -0.010719299f,
+      0.0077629089f, 0.0022850037f, 0.0074195862f, -0.00025177002f, 0.0097961426f, -0.0062942505f, -0.0097503662f,
+      -0.0023727417f, -0.0048904419f, -0.0072479248f, 0.0095367432f, -0.00056362152f, -0.014511108f, 0.0050582886f,
+      -0.00015830994f, -0.0055656433f, -0.0041236877f, 0.0049476624f, -0.010818481f, -0.0059432983f, -0.011032104f,
+      0.0025482178f, -0.0044555664f, 0.001914978f, 0.0093383789f, -0.0018730164f, 0.0052223206f, -0.0092315674f,
+      0.0038738251f, -0.0067443848f, 0.00049209595f, 0.0094299316f, 0.0020523071f, -0.0046157837f, 0.012199402f,
+      -0.0039558411f, 0.00099468231f, 0.00098419189f, 0.0095291138f, 0.0049743652f, -0.0042266846f, 0.017822266f,
+      0.0031089783f, 0.0043258667f, -0.010437012f, -0.013206482f, 0.0041160583f, -0.0055847168f, 0.0044631958f,
+      -0.004863739f, -0.0040664673f, 0.0042228699f, -0.0060119629f, -0.0014953613f, -0.0022239685f, -0.00075340271f,
+      -0.0075302124f, 0.0024909973f, -0.0064048767f,
+
+      0.0051651001f, 0.0018806458f, 0.0060958862f, 0.011238098f, 0.0052108765f, 0.0048828125f, -0.002166748f,
+      0.0025062561f, -0.0097122192f, 0.0047149658f, 0.00036144257f, 0.0065689087f, -0.01020813f, 0.0040359497f,
+      0.003616333f, -0.0036220551f, 0.00026226044f, 0.00015211105f, -0.00035095215f, -0.011680603f, -0.010719299f,
+      0.0077629089f, 0.0022850037f, 0.0074195862f, -0.00025177002f, 0.0097961426f, -0.0062942505f, -0.0097503662f,
+      -0.0023727417f, -0.0048904419f, -0.0072479248f, 0.0095367432f, -0.00056362152f, -0.014511108f, 0.0050582886f,
+      -0.00015830994f, -0.0055656433f, -0.0041236877f, 0.0049476624f, -0.010818481f, -0.012626648f, 0.0044708252f,
+      -0.0059738159f, -0.0063591003f, -0.013427734f, 0.01348877f, 0.011573792f, 0.0038223267f, -0.014335632f,
+      -0.0070648193f, -0.0069580078f, -0.0096206665f, -0.0025920868f, 0.010505676f, -0.010559082f, 0.0029716492f,
+      -0.0082778931f, 0.010643005f, -0.0006942749f, -0.0020484924f, 0.0038909912f, 0.0033874512f, 0.019088745f,
+      0.010681152f, 0.013824463f, -0.006526947f, -0.010169983f, 0.0036735535f, 0.0041122437f, 0.0029449463f,
+      -0.0038032532f, 0.0032672882f, 0.0080337524f, -0.0035305023f, 0.0081481934f, -0.0018730164f, 0.003074646f,
+      0.0061454773f, -0.0091781616f, -0.001408577f};
+
+  bool use_float16 = true;
+  RunCrossAttentionTestEnv(
+      query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
+      number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
+      use_float16);
+}
+
+// TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch2_HeadSize40) {
+//   constexpr int batch_size = 2;
+//   constexpr int sequence_length = 2;
+//   constexpr int kv_sequence_length = 4;
+//   constexpr int hidden_size = 80;
+//   constexpr int v_hidden_size = hidden_size;
+//   constexpr int number_of_heads = 2;
+
+//   std::vector<float> query_data;
+//   GetAttentionWeight(query_data, batch_size * sequence_length * hidden_size, 1, 3);
+
+//   std::vector<float> key_data;
+//   GetAttentionWeight(key_data, batch_size * kv_sequence_length * hidden_size, 2, 2);
+
+//   std::vector<float> value_data;
+//   GetAttentionWeight(value_data, batch_size * kv_sequence_length * v_hidden_size, 3, 1);
+
+//   std::vector<float> bias_data;
+//   GetAttentionBias(bias_data, 2 * hidden_size + v_hidden_size);
+
+//   std::vector<int32_t> key_padding_mask_data = {};
+//   constexpr AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
+
+//   std::vector<float> output_data;
+//   GetAttentionWeight(output_data, batch_size * sequence_length * v_hidden_size);
+
+//   bool use_float16 = true;
+//   RunCrossAttentionTestEnv(
+//       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
+//       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
+//       use_float16);
+// }
+
+// TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize64) {
+//   constexpr int batch_size = 1;
+//   constexpr int sequence_length = 2;
+//   constexpr int kv_sequence_length = 4;
+//   constexpr int head_size = 64;
+//   constexpr int number_of_heads = 2;
+//   constexpr int hidden_size = number_of_heads * head_size;
+//   constexpr int v_hidden_size = hidden_size;
+
+//   std::vector<float> query_data;
+//   GetAttentionWeight(query_data, batch_size * sequence_length * hidden_size, 1, 3);
+
+//   std::vector<float> key_data;
+//   GetAttentionWeight(key_data, batch_size * kv_sequence_length * hidden_size, 2, 2);
+
+//   std::vector<float> value_data;
+//   GetAttentionWeight(value_data, batch_size * kv_sequence_length * v_hidden_size, 3, 1);
+
+//   std::vector<float> bias_data;
+//   GetAttentionBias(bias_data, 2 * hidden_size + v_hidden_size);
+
+//   std::vector<int32_t> key_padding_mask_data = {};
+//   constexpr AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
+
+//   std::vector<float> output_data;
+//   GetAttentionWeight(output_data, batch_size * sequence_length * v_hidden_size);
+
+//   bool use_float16 = true;
+//   RunCrossAttentionTestEnv(
+//       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
+//       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
+//       use_float16);
+// }
 #endif
 
 }  // namespace test

@@ -136,8 +136,8 @@ static void RunCrossAttentionTestEnv(
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"}}};
     RunCrossAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,

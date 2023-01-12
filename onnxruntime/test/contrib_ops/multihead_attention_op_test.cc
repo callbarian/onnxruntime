@@ -14,7 +14,7 @@ namespace onnxruntime {
 using contrib::AttentionMaskType;
 namespace test {
 
-static void RunCrossAttentionTest(
+static void RunMultiHeadAttentionTest(
     const std::vector<float>& query_data,               // query:  [batch_size, sequence_length, hidden_size]
     const std::vector<float>& key_data,                 // key:    [batch_size, kv_sequence_length, hidden_size]
     const std::vector<float>& value_data,               // value:  [batch_size, kv_sequence_length, v_hidden_size]
@@ -41,7 +41,7 @@ static void RunCrossAttentionTest(
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
   if (enable_cpu || enable_cuda || enable_rocm) {
-    OpTester tester("CrossAttention", 1, onnxruntime::kMSDomain);
+    OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
     std::vector<int64_t> query_dims = {batch_size, sequence_length, hidden_size};
@@ -114,7 +114,7 @@ static void RunCrossAttentionTest(
   }
 }
 
-static void RunCrossAttentionTestEnv(
+static void RunMultiHeadAttentionTestEnv(
     const std::vector<float>& query_data,               // query:  [batch_size, sequence_length, hidden_size]
     const std::vector<float>& key_data,                 // key:    [batch_size, kv_sequence_length, hidden_size]
     const std::vector<float>& value_data,               // value:  [batch_size, kv_sequence_length, v_hidden_size]
@@ -139,7 +139,7 @@ static void RunCrossAttentionTestEnv(
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"}}};
-    RunCrossAttentionTest(
+    RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
         use_float16, disable_cpu, disable_cuda, disable_rocm);
@@ -152,14 +152,14 @@ static void RunCrossAttentionTestEnv(
             {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"}}};
-    RunCrossAttentionTest(
+    RunMultiHeadAttentionTest(
         query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
         number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
         use_float16, disable_cpu, disable_cuda, disable_rocm);
   }
 }
 
-TEST(CrossAttentionTest, CrossAttentionBatch1) {
+TEST(MultiHeadAttentionTest, MultiHeadAttentionBatch1) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -192,14 +192,14 @@ TEST(CrossAttentionTest, CrossAttentionBatch1) {
 
   bool use_float16 = false;
 
-  RunCrossAttentionTest(
+  RunMultiHeadAttentionTest(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
 
 #ifndef ENABLE_TRAINING  // TRT fused attention is enabled only on non-training builds
-TEST(CrossAttentionTest, CrossAttention_NoMask) {
+TEST(MultiHeadAttentionTest, CrossAttention_NoMask) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
@@ -257,13 +257,13 @@ TEST(CrossAttentionTest, CrossAttention_NoMask) {
       0.0023040771f, 0.0042762756f, 8.392334e-05f, 0.009979248f, -0.0089416504f, 0.0029678345f, 0.00756073f, 0.0070037842f};
 
   bool use_float16 = true;
-  RunCrossAttentionTestEnv(
+  RunMultiHeadAttentionTestEnv(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
 
-TEST(CrossAttentionTest, CrossAttention_Mask1D) {
+TEST(MultiHeadAttentionTest, CrossAttention_Mask1D) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
@@ -308,13 +308,13 @@ TEST(CrossAttentionTest, CrossAttention_Mask1D) {
       -0.0029563904f, 0.0092315674f, -3.0517578e-05f, 0.0058021545f, -0.0095977783f, 0.003326416f, 0.016464233f, -0.0040283203f};
 
   bool use_float16 = true;
-  RunCrossAttentionTestEnv(
+  RunMultiHeadAttentionTestEnv(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
 
-TEST(CrossAttentionTest, CrossAttention_Mask2D) {
+TEST(MultiHeadAttentionTest, CrossAttention_Mask2D) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
@@ -354,13 +354,13 @@ TEST(CrossAttentionTest, CrossAttention_Mask2D) {
       -0.0036659241f, -0.0039749146f, -8.392334e-05f, 0.0032367706f, -0.0053367615f};
 
   bool use_float16 = true;
-  RunCrossAttentionTestEnv(
+  RunMultiHeadAttentionTestEnv(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
 
-TEST(CrossAttentionTest, CrossAttention_Batch2_HiddenSizeV) {
+TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HiddenSizeV) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
@@ -403,7 +403,7 @@ TEST(CrossAttentionTest, CrossAttention_Batch2_HiddenSizeV) {
       0.0013885498f, -0.0024604797f, -0.0030097961f, 0.0077323914f, -0.0015010834f, 9.7155571e-05f};
 
   bool use_float16 = true;
-  RunCrossAttentionTestEnv(
+  RunMultiHeadAttentionTestEnv(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
@@ -411,7 +411,7 @@ TEST(CrossAttentionTest, CrossAttention_Batch2_HiddenSizeV) {
 
 // The following tests fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
-TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
+TEST(MultiHeadAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int kv_sequence_length = 4;
@@ -462,13 +462,13 @@ TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
       0.0061454773f, -0.0091781616f, -0.001408577f};
 
   bool use_float16 = true;
-  RunCrossAttentionTestEnv(
+  RunMultiHeadAttentionTestEnv(
       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
       use_float16);
 }
 
-// TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch2_HeadSize40) {
+// TEST(MultiHeadAttentionTest, CrossAttention_FusedKernel_Batch2_HeadSize40) {
 //   constexpr int batch_size = 2;
 //   constexpr int sequence_length = 2;
 //   constexpr int kv_sequence_length = 4;
@@ -495,13 +495,13 @@ TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
 //   GetAttentionWeight(output_data, batch_size * sequence_length * v_hidden_size);
 
 //   bool use_float16 = true;
-//   RunCrossAttentionTestEnv(
+//   RunMultiHeadAttentionTestEnv(
 //       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
 //       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
 //       use_float16);
 // }
 
-// TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize64) {
+// TEST(MultiHeadAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize64) {
 //   constexpr int batch_size = 1;
 //   constexpr int sequence_length = 2;
 //   constexpr int kv_sequence_length = 4;
@@ -529,7 +529,7 @@ TEST(CrossAttentionTest, CrossAttention_FusedKernel_Batch1_HeadSize40) {
 //   GetAttentionWeight(output_data, batch_size * sequence_length * v_hidden_size);
 
 //   bool use_float16 = true;
-//   RunCrossAttentionTestEnv(
+//   RunMultiHeadAttentionTestEnv(
 //       query_data, key_data, value_data, bias_data, key_padding_mask_data, mask_type, output_data,
 //       number_of_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
 //       use_float16);

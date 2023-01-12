@@ -4,8 +4,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include "contrib_ops/cuda/bert/cross_attention.h"
-#include "contrib_ops/cpu/bert/cross_attention_helper.h"
+#include "contrib_ops/cuda/bert/multihead_attention.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -17,20 +17,21 @@ namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      CrossAttention,                                             \
+      MultiHeadAttention,                                         \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      CrossAttention<T>);
+      MultiHeadAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-CrossAttention<T>::CrossAttention(const OpKernelInfo& info)
+
+MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
     : CudaKernel(info), fused_fp16_cross_attention_kernel_(nullptr) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
@@ -47,7 +48,7 @@ CrossAttention<T>::CrossAttention(const OpKernelInfo& info)
 }
 
 template <typename T>
-Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
+Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -56,7 +57,7 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
-  ORT_RETURN_IF_ERROR(cross_attention_helper::CheckInputs<Tensor>(query,
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                   key,
                                                                   value,
                                                                   bias,
@@ -81,6 +82,7 @@ Status CrossAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int sm = device_prop.major * 10 + device_prop.minor;
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&

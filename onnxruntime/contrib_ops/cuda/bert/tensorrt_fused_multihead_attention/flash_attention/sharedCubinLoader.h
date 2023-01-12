@@ -122,6 +122,10 @@ class TSharedCubinKernel {
       ORT_ENFORCE(findIter != mFunctions.end(), errMsg.str().c_str());
     }
 
+    std::ostringstream msg;
+    dumpHashId(params, msg);
+    printf("hash: %s \n", msg.str().c_str());
+
     auto const& kernelMeta = mKernelMeta[findIter->second.mMetaInfoIndex];
     CUfunction const func = findIter->second.mDeviceFunction;
 
@@ -132,6 +136,7 @@ class TSharedCubinKernel {
                  mDriver);
     } else {
       int32_t unroll = (getSForUnroll(params) + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep;
+      printf("unroll=%d\n", unroll);
       cuErrCheck(mDriver.cuLaunchKernel(func, params.h, params.b, unroll, kernelMeta.mThreadsPerCTA, 1, 1,
                                         kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr),
                  mDriver);

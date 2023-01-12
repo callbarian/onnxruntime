@@ -500,7 +500,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cutlass/include)
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cutlass/examples/42_fused_multi_head_attention)
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cutlass/examples)
 
 
   if (onnxruntime_ENABLE_TRAINING_OPS)

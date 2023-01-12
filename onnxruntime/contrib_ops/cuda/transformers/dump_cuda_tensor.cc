@@ -260,6 +260,9 @@ void CudaTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
 }
 
+void CudaTensorConsoleDumper::Print(const char*, const half*, int, int) const {
+}
+
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
 }
 
@@ -272,10 +275,22 @@ void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int) co
 void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int) const {
 }
 
+void CudaTensorConsoleDumper::Print(const char*, const half*, int, int, int) const {
+}
+
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const half*, int, int, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const Tensor&) const {

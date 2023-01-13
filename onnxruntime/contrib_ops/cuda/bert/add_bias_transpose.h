@@ -44,6 +44,17 @@ void LaunchAddBiasTransposeTrt(
     const T* biases, const T* query, const T* key, const T* value, T* output,
     bool is_cross_attention, int kv_sequence_length = -1);
 
+// Add (bias) for separated inputs of Q, K and V.
+//    Q:  (batch_size, sequence_length, num_heads, head_size)
+//    K:  (batch_size, kv_sequence_length, num_heads, head_size)
+//    V:  (batch_size, kv_sequence_length, num_heads, v_head_size)
+template <typename T>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length, const int kv_sequence_length,
+    const int num_heads, const int head_size, const int v_head_size,
+    const T* biases, const T* query, const T* key, const T* value, T* output);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

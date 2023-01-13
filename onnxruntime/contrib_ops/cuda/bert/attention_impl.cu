@@ -39,6 +39,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/bert/attention_fmha.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -86,14 +87,15 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner,
-    bool use_fused_cross_attention) {
+    bool use_cutlass_fmha) {
   const size_t qkv_bytes = element_size * batch_size * num_heads *
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
-  if (use_fused_cross_attention) {
+  if (use_cutlass_fmha) {
     size_t q_sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), false);  // Q has no padding
     size_t k_sequence_offset_bytes = q_sequence_offset_bytes;                                     // K has no padding
-    return qkv_bytes + q_sequence_offset_bytes + k_sequence_offset_bytes;
+    size_t fmha_workspace = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
+    return qkv_bytes + q_sequence_offset_bytes + k_sequence_offset_bytes + fmha_workspace;
   }
 
   if (fused_runner != nullptr) {
@@ -243,7 +245,7 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     void* fused_runner,
-    const void* fused_cross_attention_kernel,
+    bool use_cutlass_fmha,
     bool past_present_share_buffer) {
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
@@ -306,7 +308,7 @@ Status QkvToContext(
     dumper.Print("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
     dumper.Print("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
 
-    if (fused_cross_attention_kernel != nullptr) {
+    if (use_cutlass_fmha) {
       ORT_ENFORCE(qk_head_size == v_head_size);
 
       // For fused cross attention, besides adding bias, K and V needed to be packed:
@@ -318,7 +320,8 @@ Status QkvToContext(
           data.bias, data.query, data.key, data.value, qkv, true, kv_sequence_length);
 
           dumper.Print("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
-          dumper.Print("kv(BSN2H)", k, batch_size * kv_sequence_length, num_heads, 2, v_head_size);
+          dumper.Print("k(BSN)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+          dumper.Print("v(BSNH)", v, batch_size * sequence_length, num_heads, v_head_size);
     } else if (use_fused_kernel) {
       ORT_ENFORCE(qk_head_size == v_head_size);
 
@@ -358,7 +361,46 @@ Status QkvToContext(
   }
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
-  if (fused_cross_attention_kernel != nullptr) {
+  // if (fused_cross_attention_kernel != nullptr) {
+  //   int* q_sequence_offset = reinterpret_cast<int*>(scratch1);
+  //   LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
+  //   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  //   dumper.Print("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
+
+  //   // We only enable fused cross attention when there is no key padding mask.
+  //   // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
+  //   ORT_ENFORCE(data.mask_index == nullptr);
+
+  //   int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
+  //   LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
+  //   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  //   dumper.Print("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
+
+  //   FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
+  //       reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
+
+  //   constexpr int packed_kv_sequence_length = 128; // TODO: do we need this?
+  //   run_fused_cross_attention(
+  //       q,                          // Q
+  //       k,                          // packed KV
+  //       q_sequence_offset,          // cumulated sequence length of Q
+  //       kv_sequence_offset,         // cumulated sequence length of KV
+  //       data.output,                // output
+  //       cross_attention_kernel,     // kernels
+  //       batch_size,                 // batch size
+  //       num_heads,                  // number of heads
+  //       qk_head_size,               // head size of Q/K/V
+  //       sequence_length,            // sequence length of Q
+  //       packed_kv_sequence_length,  // sequence length of KV
+  //       stream);
+
+  //   dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  //   return Status::OK();
+  // }
+
+  if (use_cutlass_fmha) {
     int* q_sequence_offset = reinterpret_cast<int*>(scratch1);
     LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -375,23 +417,23 @@ Status QkvToContext(
 
     dumper.Print("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
 
-    FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
-        reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(fused_cross_attention_kernel);
-
-    constexpr int packed_kv_sequence_length = 128; // TODO: do we need this?
-    run_fused_cross_attention(
-        q,                          // Q
-        k,                          // packed KV
-        q_sequence_offset,          // cumulated sequence length of Q
-        kv_sequence_offset,         // cumulated sequence length of KV
-        data.output,                // output
-        cross_attention_kernel,     // kernels
-        batch_size,                 // batch size
-        num_heads,                  // number of heads
-        qk_head_size,               // head size of Q/K/V
-        sequence_length,            // sequence length of Q
-        packed_kv_sequence_length,  // sequence length of KV
-        stream);
+    FmhaParams p;
+    p.sm = device_prop.major * 10 + device_prop.minor;
+    p.is_float16 = sizeof(T) == 2;
+    p.batch_size = parameters.batch_size;
+    p.num_heads = parameters.num_heads;
+    p.sequence_length = parameters.sequence_length;
+    p.kv_sequence_length = parameters.total_sequence_length;
+    p.qk_head_size = parameters.head_size;
+    p.v_head_size = parameters.v_head_size;
+    p.causal = parameters.is_unidirectional;
+    // p.cu_seqlens_q = q_sequence_offset;
+    // p.cu_seqlens_k = kv_sequence_offset;
+    p.output = data.output;
+    p.workspace = scratch1 + GetSequenceOffsetSize(batch_size, false) * 2;
+    //p.workspace_size = parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.v_head_size * sizeof(float);
+    p.stream = stream;
+    run_cutlass_fused_attention(p);
 
     dumper.Print("output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
@@ -786,7 +828,7 @@ template Status QkvToContext<float>(
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
     void* fused_runner,
-    const void* fused_cross_attention_kernel,
+    bool use_cutlass_fmha,
     bool past_present_share_buffer);
 
 template Status QkvToContext<half>(
@@ -796,7 +838,7 @@ template Status QkvToContext<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
     void* fused_runner,
-    const void* fused_cross_attention_kernel,
+    bool use_cutlass_fmha,
     bool past_present_share_buffer);
 
 }  // namespace cuda

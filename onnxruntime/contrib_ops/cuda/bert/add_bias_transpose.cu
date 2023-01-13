@@ -575,6 +575,129 @@ void LaunchAddBiasTransposeTrt(
   }
 }
 
+
+template <typename T>
+void InvokeAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length, const int kv_sequence_length,
+    const int num_heads, const int head_size, const int v_head_size,
+    const T* biases, const T* query, const T* key, const T* value, T* output) {
+    constexpr int num_matrices = 1;
+    // Q
+    {
+      const dim3 grid(sequence_length, batch_size, num_matrices);
+      if (head_size * num_heads <= max_threads_per_block) {
+        const dim3 block(head_size, num_heads, 1);
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, output);
+      } else {
+        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, output);
+      }
+    }
+    // K
+    {
+      const dim3 grid(kv_sequence_length, batch_size, num_matrices);
+      const T* biases_k = biases + num_heads * head_size;
+      T* out_k = output + batch_size * sequence_length * num_heads * head_size;
+
+      if (head_size * num_heads <= max_threads_per_block) {
+        const dim3 block(head_size, num_heads, 1);
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(key, biases_k, out_k);
+      } else {
+        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, key, biases_k, out_k);
+      }
+    }
+
+    // V
+    {
+      constexpr int num_matrices = 1;
+      const dim3 grid(kv_sequence_length, batch_size, num_matrices);
+
+      T* out_v = output + batch_size * (sequence_length + kv_sequence_length) * num_heads * head_size;
+      const T* biases_v = biases + 2 * num_heads * head_size;
+      if (v_head_size * num_heads <= max_threads_per_block) {
+        const dim3 block(v_head_size, num_heads, 1);
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(value, biases_v, out_v);
+      } else {
+        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(v_head_size, value, biases_v, out_v);
+      }
+    }
+}
+
+template <>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length, const int kv_sequence_length,
+    const int num_heads, const int head_size, const int v_head_size,
+    const float* biases, const float* query, const float* key, const float* value, float* output) {
+if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
+    const int H = head_size / 4;
+    const int H_v = v_head_size / 4;
+    const float4* query2 = reinterpret_cast<const float4*>(query);
+    const float4* key2 = reinterpret_cast<const float4*>(key);
+    const float4* value2 = reinterpret_cast<const float4*>(value);
+    const float4* biases2 = reinterpret_cast<const float4*>(biases);
+    float4* output2 = reinterpret_cast<float4*>(output);
+    InvokeAddBias<float4>(stream, max_threads_per_block,
+                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                         biases2, query2, key2, value2, output2);
+  } else if (0 == (head_size & 1) && 0 == (v_head_size & 1)) {
+    const int H = head_size / 2;
+    const int H_v = v_head_size / 2;
+    const float2* query2 = reinterpret_cast<const float2*>(query);
+    const float2* key2 = reinterpret_cast<const float2*>(key);
+    const float2* value2 = reinterpret_cast<const float2*>(value);
+    const float2* biases2 = reinterpret_cast<const float2*>(biases);
+    float2* output2 = reinterpret_cast<float2*>(output);
+    InvokeAddBias<float2>(stream, max_threads_per_block,
+                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                         biases2, query2, key2, value2, output2);
+  } else {
+    InvokeAddBias<float>(stream, max_threads_per_block,
+                        batch_size, sequence_length, kv_sequence_length, num_heads, head_size, v_head_size,
+                        biases, query, key, value, output);
+  }
+
+}
+
+template <>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length, const int kv_sequence_length,
+    const int num_heads, const int head_size, const int v_head_size,
+    const half* biases, const half* query, const half* key, const half* value, half* output) {
+
+    if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
+    const int H = head_size / 4;
+    const int H_v = v_head_size / 4;
+    const Half4* query2 = reinterpret_cast<const Half4*>(query);
+    const Half4* key2 = reinterpret_cast<const Half4*>(key);
+    const Half4* value2 = reinterpret_cast<const Half4*>(value);
+    const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
+    Half4* output2 = reinterpret_cast<Half4*>(output);
+    InvokeAddBias<Half4>(stream, max_threads_per_block,
+                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                         biases2, query2, key2, value2, output2);
+  } else if (0 == (head_size & 1) && 0 == (v_head_size & 1)) {
+    const int H = head_size / 2;
+    const int H_v = v_head_size / 2;
+    const half2* query2 = reinterpret_cast<const half2*>(query);
+    const half2* key2 = reinterpret_cast<const half2*>(key);
+    const half2* value2 = reinterpret_cast<const half2*>(value);
+    const half2* biases2 = reinterpret_cast<const half2*>(biases);
+    half2* output2 = reinterpret_cast<half2*>(output);
+    InvokeAddBias<half2>(stream, max_threads_per_block,
+                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                         biases2, query2, key2, value2, output2);
+  } else {
+    InvokeAddBias<half>(stream, max_threads_per_block,
+                        batch_size, sequence_length, kv_sequence_length, num_heads, head_size, v_head_size,
+                        biases, query, key, value, output);
+  }
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

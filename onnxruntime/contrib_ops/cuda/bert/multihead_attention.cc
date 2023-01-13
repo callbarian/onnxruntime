@@ -7,6 +7,8 @@
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
+#include "contrib_ops/cuda/bert/attention_fmha.h"
+
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -75,7 +77,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   MHARunner* fused_runner = nullptr;
-  const FusedMultiHeadCrossAttentionKernel* fused_cross_attention_kernel = nullptr;
+  // const FusedMultiHeadCrossAttentionKernel* fused_cross_attention_kernel = nullptr;
 
 #ifndef ENABLE_TRAINING  // Only enable fused kernel on non-training builds
   // Check whether we can use fused kernel
@@ -84,22 +86,27 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
 
-  bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
-                                   nullptr == key_padding_mask &&
-                                   parameters.hidden_size == parameters.v_hidden_size &&
-                                   has_fused_cross_attention_kernel(sm, parameters.head_size,
-                                                                    parameters.kv_sequence_length);
-  if (use_fused_cross_attention) {
-    if (fused_fp16_cross_attention_kernel_ == nullptr) {
-      fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
-    }
+  // bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
+  //                                  nullptr == key_padding_mask &&
+  //                                  parameters.hidden_size == parameters.v_hidden_size &&
+  //                                  has_fused_cross_attention_kernel(sm, parameters.head_size,
+  //                                                                   parameters.kv_sequence_length);
+  // if (use_fused_cross_attention) {
+  //   if (fused_fp16_cross_attention_kernel_ == nullptr) {
+  //     fused_fp16_cross_attention_kernel_ = get_fused_cross_attention_kernels(sm);
+  //   }
 
-    // In case some kernel not loaded due to shared memory limit, we need to double check here.
-    // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
-    if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
-      fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
-    }
-  } else {
+  //   // In case some kernel not loaded due to shared memory limit, we need to double check here.
+  //   // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
+  //   if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
+  //     fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
+  //   }
+  // }
+  bool use_cutlass_fmha = !disable_fused_cross_attention_ &&
+                          nullptr == key_padding_mask &&
+                          parameters.hidden_size == parameters.v_hidden_size &&
+                          has_cutlass_fused_attention(sm);
+   if (!use_cutlass_fmha) {
     bool use_fused_runner = !disable_fused_runner_ &&
                             (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                             parameters.hidden_size == parameters.v_hidden_size &&
@@ -134,7 +141,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
-                                                   fused_cross_attention_kernel != nullptr);
+                                                   use_cutlass_fmha);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -156,7 +163,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   return QkvToContext<CudaT>(
       device_prop, cublas, Stream(context), parameters, data,
       reinterpret_cast<void*>(fused_runner),
-      fused_cross_attention_kernel,
+      use_cutlass_fmha,
       false);
 }
 

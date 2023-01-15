@@ -17,6 +17,7 @@ enum AttentionMaskType {
   MASK_UNKNOWN
 };
 
+// Parameters deduced from node attributes and inputs/outputs.
 struct AttentionParameters {
   int batch_size;
   int sequence_length;
@@ -32,6 +33,7 @@ struct AttentionParameters {
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
+
   AttentionMaskType mask_type;
 };
 
@@ -44,6 +46,10 @@ constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATT
 
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
+// Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
+constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION";
+
 }  // namespace attention
 
 }  // namespace contrib

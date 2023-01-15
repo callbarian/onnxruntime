@@ -1,29 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/gsl.h"
-#include "contrib_ops/cuda/bert/attention_fmha.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-#include "41_fused_multi_head_attention/kernel_forward.h" // in cutlass examples
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define ASSIGN_NO_OVERFLOW(A, B)                                       \
-  {                                                                    \
-    A = B;                                                             \
-    ORT_ENFORCE(                                                       \
-        B < std::numeric_limits<decltype(A)>::max(), #B " overflows"); \
-  }
-
-
-template<typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block,
-         bool single_value_iteration>
+template<typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
 void LaunchCutlassFmha(const FmhaParams& params) {
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
   typename Attention::Params p;
@@ -31,14 +22,15 @@ void LaunchCutlassFmha(const FmhaParams& params) {
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
     p.key_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.key));
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
-    // p.cu_seqlens_q_ptr = params.cu_seqlens_q;
-    // p.cu_seqlens_k_ptr = params.cu_seqlens_k;
+    p.cu_seqlens_q_ptr = params.cu_seqlens_q;
+    p.cu_seqlens_k_ptr = params.cu_seqlens_k;
 
     p.logsumexp_ptr = nullptr; // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);
     if (Attention::kNeedsOutputAccumulatorBuffer) {
       using Acc = typename Attention::accum_t;
-      //ORT_ENFORCE(params.workspace_size >= params.batch_size * params.sequence_length * params.num_heads * params.v_head_size * sizeof(Acc));
+      // workspace size: batch_size * sequence_length * num_heads * v_head_size * sizeof(float)
+      ORT_ENFORCE(params.workspace != nullptr, "Need output accumulator buffer but no workspace provided");
       p.output_accum_ptr = reinterpret_cast<Acc*>(params.workspace);
     } else {
       p.output_accum_ptr = nullptr;
@@ -54,21 +46,43 @@ void LaunchCutlassFmha(const FmhaParams& params) {
 
     p.causal = params.causal;
 
-    // q/k/v_strideB is needed only when cu_seqlens_q and cu_seqlens_k are not avaiable
-    // These might overflow for big tensors.
-    ASSIGN_NO_OVERFLOW(p.q_strideB, params.num_heads * params.qk_head_size * params.sequence_length);
-    ASSIGN_NO_OVERFLOW(p.k_strideB, params.num_heads * params.qk_head_size * params.kv_sequence_length);
-    ASSIGN_NO_OVERFLOW(p.v_strideB, params.num_heads * params.v_head_size * params.kv_sequence_length);
-    ASSIGN_NO_OVERFLOW(p.o_strideB, params.num_heads * params.v_head_size * params.sequence_length);
+    // Make sure the following strides will not have integer overflow.
+    ORT_ENFORCE(params.num_heads * std::max(params.qk_head_size, params.v_head_size) * std::max(params.sequence_length, params.kv_sequence_length) < std::numeric_limits<int32_t>::max());
 
-    p.q_strideM = params.num_heads * params.qk_head_size;
-    p.k_strideM = params.num_heads * params.qk_head_size;
-    p.v_strideM = params.num_heads * params.v_head_size;
+    if (params.format == FmhaQkvFormat::QKV_3BNSH) {
+      // Input format is BxNxSxH, output is BxSxNxH
+      p.q_strideM = params.qk_head_size;
+      p.k_strideM = params.qk_head_size;
+      p.v_strideM = params.v_head_size;
+      p.o_strideM = params.num_heads * params.v_head_size;
 
-    p.q_strideH = params.qk_head_size;
-    p.k_strideH = params.qk_head_size;
-    p.v_strideH = params.v_head_size;
-    p.o_strideH = params.v_head_size;
+      p.q_strideH = params.sequence_length * params.qk_head_size;
+      p.k_strideH = params.kv_sequence_length * params.qk_head_size;
+      p.v_strideH = params.kv_sequence_length * params.v_head_size;
+      p.o_strideH = params.v_head_size;
+
+      p.q_strideB = params.sequence_length * params.qk_head_size * params.num_heads;
+      p.k_strideB = params.kv_sequence_length * params.qk_head_size * params.num_heads;
+      p.v_strideB = params.kv_sequence_length * params.v_head_size * params.num_heads;
+      p.o_strideB = params.sequence_length * params.v_head_size * params.num_heads;
+    } else {
+      ORT_ENFORCE(params.format == FmhaQkvFormat::QKV_3BSNH);
+      // Input format is BxSxNxH, output is BxSxNxH
+      p.q_strideH = params.qk_head_size;
+      p.k_strideH = params.qk_head_size;
+      p.v_strideH = params.v_head_size;
+      p.o_strideH = params.v_head_size;
+
+      p.q_strideM = params.num_heads * params.qk_head_size;
+      p.k_strideM = params.num_heads * params.qk_head_size;
+      p.v_strideM = params.num_heads * params.v_head_size;
+      p.o_strideM = params.num_heads * params.v_head_size;
+
+      p.q_strideB = params.num_heads * params.qk_head_size * params.sequence_length;
+      p.k_strideB = params.num_heads * params.qk_head_size * params.kv_sequence_length;
+      p.v_strideB = params.num_heads * params.v_head_size * params.kv_sequence_length;
+      p.o_strideB = params.num_heads * params.v_head_size * params.sequence_length;
+    }
 
     p.causal = params.causal;
   }
@@ -115,27 +129,31 @@ void DispatchBlockSize(const FmhaParams& params) {
   }
 }
 
-//TODO: split each SM to a cu file to speed up compiling.
 template<typename T>
 void DispatchArchTag(const FmhaParams& params) {
   const int32_t &sm = params.sm;
-  if (sm == 80 || sm == 86 || sm == 89) {
+  if (sm >= 80) {
     DispatchBlockSize<T, cutlass::arch::Sm80>(params);
-  } else if (sm == 75) {
+  } else if (sm >= 75) {
       DispatchBlockSize<T, cutlass::arch::Sm75>(params);
-    } else if (sm == 70) {
+    } else if (sm >= 70) {
       DispatchBlockSize<T, cutlass::arch::Sm70>(params);
+    } else if (sm >= 50) {
+      DispatchBlockSize<T, cutlass::arch::Sm50>(params);
     } else {
       ORT_ENFORCE(!"not implemented");
   }
 }
 
-void run_cutlass_fused_attention(const FmhaParams& params) {
-  if (params.is_float16) {
+common::Status run_memory_efficient_attention(const FmhaParams& params) {
+  if (params.is_half) {
     DispatchArchTag<cutlass::half_t>(params);
   } else {
     DispatchArchTag<float>(params);
   }
+
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(params.stream));
+  return Status::OK();
 }
 
 }

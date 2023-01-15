@@ -6,8 +6,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
-
-#include "contrib_ops/cuda/bert/attention_fmha.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -43,10 +42,9 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
   enable_flash_attention_ = sizeof(T) == 2 &&
-                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 
-  disable_fused_cross_attention_ = sizeof(T) != 2 ||
-                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
 }
 
 template <typename T>
@@ -79,7 +77,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   MHARunner* fused_runner = nullptr;
   // const FusedMultiHeadCrossAttentionKernel* fused_cross_attention_kernel = nullptr;
 
-#ifndef ENABLE_TRAINING  // Only enable fused kernel on non-training builds
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
 
@@ -102,34 +99,32 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   //     fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
   //   }
   // }
-  bool use_cutlass_fmha = !disable_fused_cross_attention_ &&
-                          nullptr == key_padding_mask &&
+
+  bool use_fused_runner = !disable_fused_runner_ &&
+                          (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
-                          has_cutlass_fused_attention(sm);
-   if (!use_cutlass_fmha) {
-    bool use_fused_runner = !disable_fused_runner_ &&
-                            (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
-                            parameters.hidden_size == parameters.v_hidden_size &&
-                            parameters.sequence_length == parameters.kv_sequence_length &&
-                            FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                               enable_flash_attention_, false);
+                          parameters.sequence_length == parameters.kv_sequence_length &&
+                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
+                                                             enable_flash_attention_, false);
+  if (use_fused_runner) {
+    // Here we assume that num_heads and head_size does not change for a CrossAttention node.
+    if (nullptr == fused_fp16_runner_.get()) {
+      constexpr bool is_unidirectional = false;
+      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_flash_attention_));
+    }
 
-    if (use_fused_runner) {
-      // Here we assume that num_heads and head_size does not change for a CrossAttention node.
-      if (nullptr == fused_fp16_runner_.get()) {
-        constexpr bool is_unidirectional = false;
-        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-            num_heads_, parameters.head_size, sm, is_unidirectional, enable_flash_attention_));
-      }
-
-      // In case some kernel not loaded due to shared memory limit, we need to double check here.
-      const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-      if (fused_fp16_runner_->isValid(S)) {
-        fused_runner = fused_fp16_runner_.get();
-      }
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
+    const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
+    if (fused_fp16_runner_->isValid(S)) {
+      fused_runner = fused_fp16_runner_.get();
     }
   }
-#endif
+
+  bool use_memory_efficient_attention = fused_runner == nullptr &&
+                                        !disable_memory_efficient_attention_ &&
+                                        nullptr == key_padding_mask &&  // TODO: support 1D mask
+                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
@@ -141,7 +136,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner,
-                                                   use_cutlass_fmha);
+                                                   use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -158,13 +153,17 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
+  data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
+  // The following will be updated later.
+  data.q = nullptr;
+  data.k = nullptr;
+  data.v = nullptr;
+
 
   cublasHandle_t cublas = GetCublasHandle(context);
   return QkvToContext<CudaT>(
-      device_prop, cublas, Stream(context), parameters, data,
-      reinterpret_cast<void*>(fused_runner),
-      use_cutlass_fmha,
-      false);
+      device_prop, cublas, Stream(context), parameters, data);
 }
 
 }  // namespace cuda

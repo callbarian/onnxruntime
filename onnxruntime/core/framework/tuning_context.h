@@ -28,6 +28,9 @@ class ITuningContext {
 
   // For validating tuning results .
   virtual const TuningResultsValidator& GetTuningResultsValidator() const = 0;
+
+  virtual TuningResults SaveTuningResults(const IExecutionProvider* ep) const;
+  virtual Status LoadTuningResults(const IExecutionProvider* ep, const TuningResults& tr);
 };
 
 class TuningResultsManager {

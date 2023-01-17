@@ -21,6 +21,21 @@
 
 namespace onnxruntime {
 
+TuningResults ITuningContext::SaveTuningResults(const IExecutionProvider* ep) const {
+  TuningResults tr;
+  tr.ep = ep->Type();
+  tr.validators = GetTuningResultsValidator().WriteAll();
+  tr.results = GetTuningResultsManager().Dump();
+  return tr;
+}
+
+Status ITuningContext::LoadTuningResults(const IExecutionProvider* ep, const TuningResults& tr) {
+  ORT_RETURN_IF(tr.ep != ep->Type(), "EP mismatch");
+  ORT_RETURN_IF_ERROR(GetTuningResultsValidator().CheckAll(tr.validators));
+  GetTuningResultsManager().Load(tr.results);
+  return Status::OK();
+}
+
 KernelMap TuningResultsManager::Lookup(const std::string& op_signature) const {
   std::scoped_lock l{lock_};
   auto it = results_.find(op_signature);

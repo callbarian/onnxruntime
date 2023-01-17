@@ -2181,6 +2181,17 @@ const profiling::Profiler& InferenceSession::GetProfiling() const {
   return session_profiler_;
 }
 
+std::vector<TuningResults> InferenceSession::GetTuningResults() const {
+  std::vector<TuningResults> ret;
+  for (const auto& provider : execution_providers_) {
+    const auto* tr = provider->GetTuningContext();
+    if(tr != nullptr) {
+      ret.emplace_back(tr->SaveTuningResults(provider.get()));
+    }
+  }
+  return ret;
+}
+
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);
 }

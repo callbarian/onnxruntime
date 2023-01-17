@@ -14,10 +14,14 @@
 #endif
 
 #ifdef USE_CUDA
+using onnxruntime::cuda::TunableOpInfo;
 using onnxruntime::cuda::tunable::Timer;
+using TuningContextT = onnxruntime::cuda::tunable::CudaTuningContext;
 using StreamT = cudaStream_t;
 #elif USE_ROCM
+using onnxruntime::rocm::TunableOpInfo;
 using onnxruntime::rocm::tunable::Timer;
+using TuningContextT = onnxruntime::rocm::tunable::RocmTuningContext;
 using StreamT = hipStream_t;
 #endif
 
@@ -47,9 +51,23 @@ class IKernelExplorer {
   virtual ~IKernelExplorer() = default;
 
  protected:
+  TuningContextT* TuningContext() {
+    if (tuning_ctx_ == nullptr) {
+#if USE_CUDA || USE_ROCM
+      tuning_ctx_ = std::make_unique<TuningContextT>(&info_);
+#else
+      ORT_NOT_IMPLEMENTED("only CUDA or ROCM is supported");
+#endif
+    }
+
+    return tuning_ctx_.get();
+  }
+
   StreamT Stream() { return stream_; }
 
  private:
+  TunableOpInfo info_{};
+  std::unique_ptr<TuningContextT> tuning_ctx_{};
   StreamT stream_{0};
   int repeats_{100};
 };

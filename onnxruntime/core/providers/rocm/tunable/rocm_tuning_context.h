@@ -11,6 +11,14 @@ namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
+class RocmTuningResultsValidator : public TuningResultsValidator {
+ public:
+  RocmTuningResultsValidator();
+
+ protected:
+  std::string WriteOrtBuildConfig() const override;
+};
+
 class RocmTuningContext : public ITuningContext {
  public:
   explicit RocmTuningContext(TunableOpInfo* info);
@@ -22,9 +30,12 @@ class RocmTuningContext : public ITuningContext {
   TuningResultsManager& GetTuningResultsManager() override;
   const TuningResultsManager& GetTuningResultsManager() const override;
 
+  const TuningResultsValidator& GetTuningResultsValidator() const override;
+
  private:
   TunableOpInfo* info_;  // non-owning handle
   TuningResultsManager manager_;
+  RocmTuningResultsValidator validator_;
 };
 
 }  // namespace tunable

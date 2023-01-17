@@ -11,6 +11,11 @@ namespace onnxruntime {
 namespace cuda {
 namespace tunable {
 
+class CudaTuningResultsValidator : public TuningResultsValidator {
+ public:
+  CudaTuningResultsValidator();
+};
+
 class CudaTuningContext : public ITuningContext {
  public:
   explicit CudaTuningContext(TunableOpInfo* info);
@@ -22,9 +27,12 @@ class CudaTuningContext : public ITuningContext {
   TuningResultsManager& GetTuningResultsManager() override;
   const TuningResultsManager& GetTuningResultsManager() const override;
 
+  const TuningResultsValidator& GetTuningResultsValidator() const override;
+
  private:
   TunableOpInfo* info_;  // non-owning handle
   TuningResultsManager manager_;
+  CudaTuningResultsValidator validator_;
 };
 
 }  // namespace tunable

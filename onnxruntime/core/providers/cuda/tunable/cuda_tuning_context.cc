@@ -12,6 +12,23 @@ namespace onnxruntime {
 namespace cuda {
 namespace tunable {
 
+std::string WriteCudaVersion() {
+  int version;
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&version));
+  return std::to_string(version);
+}
+
+Status CheckCudaVersion(const std::string& value) {
+  auto current = WriteCudaVersion();
+  ORT_RETURN_IF(current != value, "CUDA runtime version mismatch: tuning results produced with CUDA ", value,
+                ", onnxruntime currently run with CUDA ", current);
+  return Status::OK();
+}
+
+CudaTuningResultsValidator::CudaTuningResultsValidator() {
+  RegisterValidator("CUDA_VERSION", CheckCudaVersion, WriteCudaVersion);
+}
+
 CudaTuningContext::CudaTuningContext(TunableOpInfo* info) : info_(info) {}
 
 void CudaTuningContext::EnableTunableOp() {
@@ -34,6 +51,10 @@ TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {
 
 const TuningResultsManager& CudaTuningContext::GetTuningResultsManager() const {
   return manager_;
+}
+
+const TuningResultsValidator& CudaTuningContext::GetTuningResultsValidator() const {
+  return validator_;
 }
 
 }  // namespace tunable

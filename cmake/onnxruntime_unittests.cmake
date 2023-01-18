@@ -9,7 +9,7 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_USE_NUPHAR_TVM)
+if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
@@ -252,6 +252,15 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  file(GLOB onnxruntime_test_training_on_device_src
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
+    )
+endif()
+
 if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
@@ -311,6 +320,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
 endif()
 
+if (onnxruntime_USE_CANN)
+  file(GLOB_RECURSE onnxruntime_test_providers_cann_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cann/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
@@ -348,7 +364,7 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
-if ((NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_NUPHAR) OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/internal_testing/*"
     )
@@ -434,6 +450,10 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
 endif()
 
+if(onnxruntime_USE_CANN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cann)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -463,17 +483,6 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if(onnxruntime_USE_NUPHAR)
-  # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
-  # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
-  # keep those test cases doesn't bring any value now.
-
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
-endif()
-
 if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
@@ -491,7 +500,6 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -577,9 +585,14 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
+if(onnxruntime_USE_ROCM)
+  find_library(HIP_LIB amdhip64 REQUIRED)
+  list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
+endif()
+
 
 if(WIN32)
-  if (onnxruntime_USE_NUPHAR_TVM)
+  if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 endif()
@@ -661,10 +674,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -814,7 +826,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_USE_NUPHAR_TVM)
+    if (onnxruntime_USE_TVM)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
@@ -871,7 +883,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_USE_NUPHAR_TVM)
+if (onnxruntime_USE_TVM)
   if (WIN32)
     target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
@@ -1074,7 +1086,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_USE_NUPHAR_TVM)
+  if (onnxruntime_USE_TVM)
     if (WIN32)
       target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
     endif()

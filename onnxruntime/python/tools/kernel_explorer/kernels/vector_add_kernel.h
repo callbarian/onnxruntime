@@ -3,21 +3,24 @@
 
 #pragma once
 
-#include "device_array.h"
-#include "operator.h"
+#include <hip/hip_runtime.h>
 
-// aligned vector for vectorized load/store
-template<typename T, int VecSize>
-struct alignas(sizeof(T) * VecSize) AlignedVector {
-  T val[VecSize];
-};
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/tunable/util.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+
+using onnxruntime::rocm::CeilDiv;
+using onnxruntime::rocm::aligned_vector;
+
+namespace onnxruntime {
 
 template <typename T, int VecSize>
 __global__ void VectorAddKernel(const T* __restrict__ x,
-                                  const T* __restrict__ y,
-                                  T* __restrict__ z, int n) {
+                                const T* __restrict__ y,
+                                T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = AlignedVector<T, VecSize>;
+  using LoadT = aligned_vector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];
@@ -30,7 +33,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 
     T z_vec[VecSize];
 
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < VecSize; j++) {
       z_vec[j] = x_vec[j] + y_vec[j];
     }
@@ -47,10 +50,15 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-void LaunchVectorAdd(const T* x, const T* y, T* z, int n) {
-  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>), 
-                  dim3(ceil(float(n)/(float(ThreadsPerBlock)*VecSize))),
-                  dim3(ThreadsPerBlock),
-                  0, 0,
-                  x, y, z, n);
+Status LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
+  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>),
+                     dim3(CeilDiv(n, ThreadsPerBlock*VecSize)),
+                     dim3(ThreadsPerBlock),
+                     0, stream,
+                     x, y, z, n);
+  auto status = hipGetLastError();
+  ORT_RETURN_IF(status != hipSuccess, hipGetErrorName(status));
+  return Status::OK();
 }
+
+}  // namespace onnxruntime

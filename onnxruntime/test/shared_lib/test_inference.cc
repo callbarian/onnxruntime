@@ -112,14 +112,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options,
-                                                                      /*allow_unaligned_buffers*/ 1, ""));
-    std::cout << "Running simple inference with nuphar provider" << std::endl;
-#else
-    return;
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -1781,7 +1773,7 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
 
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  // create session 1
+  // create session 1 (using model path)
   Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
@@ -1791,8 +1783,18 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
                     expected_values_y,
                     nullptr);
 
-  // create session 2
-  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
+  // create session 2 (using model bytes)
+  std::ifstream model_file_stream(MATMUL_MODEL_URI, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+
+  model_file_stream.seekg(0, std::ios::end);
+  size_t size = model_file_stream.tellg();
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(size, 0);
+  model_file_stream.read(&file_contents[0], size);
+  model_file_stream.close();
+
+  Ort::Session session2(*ort_env, file_contents.data(), size, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session2,
                     inputs,
@@ -2002,7 +2004,10 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   char* cuda_options_str = nullptr;
   ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
-  std::string s(cuda_options_str, strnlen(cuda_options_str, 2048));
+  std::string s;
+  if (cuda_options_str != nullptr) {
+    s = std::string(cuda_options_str, strnlen(cuda_options_str, 2048));
+  }
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
   ASSERT_TRUE(s.find("arena_extend_strategy=kSameAsRequested") != std::string::npos);
@@ -2166,9 +2171,11 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
 
 #endif
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
+// Reduced Ops build doesn't support OptionalHasElement (16) yet
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
 TEST(CApiTest, GH_11717) {
-  const auto* model_path = OPTIONAL_TYPE_GH_11717_MODEL;
+  const auto* model_path = TSTR("testdata/gh_issue_11717.onnx");
+
   Ort::SessionOptions session_options{};
   // Just check if the model loads fine without a segmentation fault
   // in the default CPU EP

@@ -352,6 +352,7 @@ typedef enum OrtCudnnConvAlgoSearch {
   OrtCudnnConvAlgoSearchExhaustive,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
   OrtCudnnConvAlgoSearchHeuristic,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
   OrtCudnnConvAlgoSearchDefault,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+  OrtCudnnConvAlgoSearchCached,      // cache algo with exhaustive search first, and save them to optimized model. Use optimized model to load cached algo.
 } OrtCudnnConvAlgoSearch;
 
 /** \brief CUDA Provider Options
@@ -3486,6 +3487,12 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+
+  /* Save Optimized model. This is an api intended for use after inferencing, thus caching algo for cudnn (conv, transpose conv)
+  *
+  *
+  */ 
+  ORT_API2_STATUS(SaveOptimizedModel, _Inout_ OrtSession* session);
 };
 
 /*

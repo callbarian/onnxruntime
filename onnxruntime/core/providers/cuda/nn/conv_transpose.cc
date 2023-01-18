@@ -30,6 +30,11 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t>& s, cudnnConvolutionBwdDataAlgo_t algo,
+                               size_t* sz) {
+  return cudnnGetConvolutionBackwardDataWorkspaceSize(s.handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, algo, sz);
+}
+
 template <typename T>
 Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
   return DoConvTranspose(context, false);
@@ -132,22 +137,42 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         if constexpr (std::is_same<T, MLFloat16>::value)
           CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
+        const CUDAExecutionProvider* cuda_ep =
+            static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+        int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+
+        ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 4, "cudnn_conv_algo should be 0, 1, 2, or 3 but got ", cudnn_conv_algo);
         cudnnConvolutionBwdDataAlgoPerf_t perf;
-        int algo_count = 1;
-        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
-            CudnnHandle(),
-            s_.w_desc,
-            w_data,
-            s_.x_tensor,
-            x_data,
-            s_.conv_desc,
-            s_.y_tensor,
-            y_data,
-            1,
-            &algo_count,
-            &perf,
-            algo_search_workspace.get(),
-            AlgoSearchWorkspaceSize));
+
+        if (cudnn_conv_algo < 3) {
+          int algo_count = 1;
+          CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+              CudnnHandle(),
+              s_.w_desc,
+              w_data,
+              s_.x_tensor,
+              x_data,
+              s_.conv_desc,
+              s_.y_tensor,
+              y_data,
+              1,
+              &algo_count,
+              &perf,
+              algo_search_workspace.get(),
+              AlgoSearchWorkspaceSize));
+
+          node->SetCachedAlgo(perf.algo);
+          node->SetCudnnMaxWorkSpace(AlgoSearchWorkspaceSize);
+        } else if (cudnn_conv_algo == 3) {
+          perf.algo = cachedAlgo;
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          if (std::is_same<T, MLFloat16>::value) {
+            perf.mathType = CUDNN_TENSOR_OP_MATH;
+          } else {
+            perf.mathType = CUDNN_DEFAULT_MATH;
+          }
+        }
+
         s_.cached_benchmark_results.insert(x_dims, {perf.algo, perf.memory, perf.mathType});
       }
 

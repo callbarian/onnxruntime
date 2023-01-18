@@ -15,6 +15,8 @@ extern const OrtApi* g_ort;
 namespace onnxruntime {
 namespace perftest {
 
+int iter = 0;
+
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
@@ -25,6 +27,14 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
                                     output_names_raw_ptr.data(), output_names_raw_ptr.size());
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
+  
+  // seongmin
+  std::cout << "Run " << duration_seconds.count() << std::endl;
+  //if (iter == 0) {
+  //  session_.SaveOptimizedModel();
+  //  iter += 1;
+  //}
+
   return duration_seconds;
 }
 
@@ -245,6 +255,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    //seongmin
+    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(2);
+    //seongmin end
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
@@ -541,7 +554,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
   }
 
+  // seongmin 
+  auto start = std::chrono::high_resolution_clock::now();
+  
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+
 
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);

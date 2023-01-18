@@ -659,6 +659,12 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& Node__Description(const Node* p) noexcept override { return p->Description(); }
   const std::string& Node__Domain(const Node* p) noexcept override { return p->Domain(); }
   const std::string& Node__OpType(const Node* p) noexcept override { return p->OpType(); }
+
+  int Node__CachedAlgo(const Node* p) noexcept override { return p->CachedAlgo(); }
+  size_t Node__CudnnMaxWorkSpace(const Node* p) noexcept override { return p->CudnnMaxWorkSpace(); }
+  void Node__SetCachedAlgo(const Node* p, int algo) override { const_cast<Node*>(p)->SetCachedAlgo(algo); }
+  void Node__SetCudnnMaxWorkSpace(const Node* p, size_t workspace) override { const_cast<Node*>(p)->SetCudnnMaxWorkSpace(workspace); }
+
   int Node__SinceVersion(const Node* p) override { return p->SinceVersion(); }
 
   const Function* Node__GetFunctionBody(const Node* p) noexcept override { return p->GetFunctionBody(); }

@@ -742,6 +742,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SaveOptimizedModel, _Inout_ OrtSession* sess) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto status = session->SaveOptimizedModel();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2546,6 +2554,9 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::CopyKernelInfo,
     &OrtApis::ReleaseKernelInfo,
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SaveOptimizedModel,
+    // End of Version 999
 
 };
 

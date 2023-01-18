@@ -47,6 +47,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    Base::CudnnHandle();
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
                                                               &alpha,
                                                               Base::s_.x_tensor,

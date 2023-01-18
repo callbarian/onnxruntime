@@ -576,6 +576,12 @@ struct ProviderHost {
   virtual const std::string& Node__Description(const Node* p) noexcept = 0;
   virtual const std::string& Node__Domain(const Node* p) noexcept = 0;
   virtual const std::string& Node__OpType(const Node* p) noexcept = 0;
+
+  virtual int Node__CachedAlgo(const Node* p) noexcept = 0;
+  virtual size_t Node__CudnnMaxWorkSpace(const Node* p) noexcept = 0;
+  virtual void Node__SetCachedAlgo(const Node* p, int algo) = 0;
+  virtual void Node__SetCudnnMaxWorkSpace(const Node* p, size_t workspace) = 0;
+
   virtual int Node__SinceVersion(const Node* p) = 0;
 
   virtual const Function* Node__GetFunctionBody(const Node* p) noexcept = 0;

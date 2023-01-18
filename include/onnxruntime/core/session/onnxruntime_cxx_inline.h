@@ -1365,6 +1365,10 @@ inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_c
   api_.ReleaseKernelInfo(info_copy);
 } 
 
+inline void Session::SaveOptimizedModel() {
+  ThrowOnError(GetApi().SaveOptimizedModel(p_));
+}
+
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));
   return *this;

@@ -598,14 +598,15 @@ void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
   proto.set_op_type(op_type_);
-
+  proto.set_cached_algo(to_string(cached_algo_));
+  //proto.set_cudnn_max_workspace(cudnn_max_)
   if (!domain_.empty())
     proto.set_domain(domain_);
 
   if (!description_.empty())
     proto.set_doc_string(description_);
 
-  // Set attributes.
+  // Set attributes
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
@@ -817,13 +818,15 @@ void Node::Init(const std::string& name,
                 const std::vector<NodeArg*>& input_args,
                 const std::vector<NodeArg*>& output_args,
                 const NodeAttributes* attributes,
-                const std::string& domain) {
+                const std::string& domain,
+                const int cached_algo) {
   name_ = name;
   op_type_ = op_type;
   description_ = description;
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  cached_algo_ = cached_algo;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -3013,7 +3016,8 @@ Node& Graph::AddNode(const Node& other) {
                            definitions.input_defs,
                            definitions.output_defs,
                            &other.GetAttributes(),
-                           other.Domain());
+                           other.Domain(),
+                           other.CachedAlgo());
 
   return new_node;
 }
@@ -3038,7 +3042,22 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                  input_defs,
                  output_defs,
                  &attributes,
-                 node_proto.domain());
+                 node_proto.domain(),
+                 ToInt(node_proto.cached_algo()));
+}
+
+int Graph::ToInt(const std::string& value) {
+  ORT_TRY {
+    if (value.empty()) {
+      return 1;
+    }
+
+    return std::stoi(value);
+  }
+  ORT_CATCH(const std::exception& ex){
+    (void)ex;
+    return 1;
+  }
 }
 
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -3210,7 +3229,8 @@ Node& Graph::AddNode(const std::string& name,
                      gsl::span<NodeArg* const> input_args,
                      gsl::span<NodeArg* const> output_args,
                      const NodeAttributes* attributes,
-                     const std::string& domain) {
+                     const std::string& domain,
+                     const int cached_algo) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   inputs.resize(input_args.size());
@@ -3225,7 +3245,7 @@ Node& Graph::AddNode(const std::string& name,
   }
 
   const gsl::not_null<Node*> node = AllocateNode();
-  node->Init(name, op_type, description, inputs, outputs, attributes, domain);
+  node->Init(name, op_type, description, inputs, outputs, attributes, domain, cached_algo);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
   }
@@ -4020,8 +4040,9 @@ Status Graph::InlineFunction(Node& callnode) {
           onnx::AttributeProto attr_copy = node_attr;
           new_attr_map[node_attr.name()] = std::move(attr_copy);
         }
+
         AddNode(inlined_node.name(), inlined_node.op_type(),
-                inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain());
+                inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain(), ToInt(inlined_node.cached_algo()));
       }
     }
 
@@ -4080,7 +4101,8 @@ Status Graph::InlineFunction(Node& callnode) {
                 inputs,
                 outputs,
                 &subgraph_node.GetAttributes(),
-                subgraph_node.Domain());
+                subgraph_node.Domain(),
+                subgraph_node.CachedAlgo());
       }
     }
   }

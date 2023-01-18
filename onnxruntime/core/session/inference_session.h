@@ -300,6 +300,8 @@ class InferenceSession {
    */
   common::Status Initialize() ORT_MUST_USE_RESULT;
 
+  common::Status SaveOptimizedModel();
+
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
                      std::vector<OrtValue>* p_fetches,

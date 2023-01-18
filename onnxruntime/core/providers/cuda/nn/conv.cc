@@ -263,7 +263,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
       int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
-      ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
+      ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 4, "cudnn_conv_algo should be 0, 1, 2, or 3 but got ", cudnn_conv_algo);
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
@@ -286,7 +286,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               &perf,
               algo_search_workspace.get(),
               max_ws_size));
+
+          node->SetCachedAlgo(perf.algo);
+          node->SetCudnnMaxWorkSpace(max_ws_size);
           break;
+          
         }
         case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
@@ -298,6 +302,26 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               1,            // requestedAlgoCount
               &algo_count,  // returnedAlgoCount
               &perf));
+          break;
+
+        case 2:
+          perf.algo = kDefaultConvAlgo;
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          if (std::is_same<T, MLFloat16>::value) {
+            perf.mathType = CUDNN_TENSOR_OP_MATH;
+          } else {
+            perf.mathType = CUDNN_DEFAULT_MATH;
+          }
+          break;
+
+        case 3:
+          perf.algo = cachedAlgo;
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          if (std::is_same<T, MLFloat16>::value) {
+            perf.mathType = CUDNN_TENSOR_OP_MATH;
+          } else {
+            perf.mathType = CUDNN_DEFAULT_MATH;
+          }
           break;
 
         default:

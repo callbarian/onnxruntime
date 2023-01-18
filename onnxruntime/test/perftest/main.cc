@@ -7,6 +7,7 @@
 #include "command_args_parser.h"
 #include "performance_runner.h"
 #include <google/protobuf/stubs/common.h>
+#include <cuda_runtime.h>
 
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
@@ -22,6 +23,19 @@ int real_main(int argc, char* argv[]) {
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
+  //seongmin
+  //void** cuda_memory{};
+  //::cudaMalloc(&cuda_memory, 1);
+  //::cudaFree(cuda_memory);
+
+  //::cudaMalloc(&cuda_memory, 1);
+  //::cudaFree(cuda_memory);
+
+  //::cudaMalloc(&cuda_memory, 1);
+  //::cudaFree(cuda_memory);
+
+  //seongmin end
+
   Ort::Env env{nullptr};
   {
     bool failed = false;
@@ -50,6 +64,16 @@ int real_main(int argc, char* argv[]) {
   }
 
   perf_runner.SerializeResult();
+
+   
+  perftest::PerformanceRunner perf_runner2(env, test_config, rd);
+  auto status2 = perf_runner2.Run();
+  if (!status2.IsOK()) {
+    printf("Run failed:%s\n", status2.ErrorMessage().c_str());
+    return -1;
+  }
+
+  perf_runner2.SerializeResult();
 
   return 0;
 }

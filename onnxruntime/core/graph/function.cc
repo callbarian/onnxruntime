@@ -68,7 +68,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
       auto& n_output = function_body_graph_.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
-    function_body_graph_.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+    function_body_graph_.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain(), node->CachedAlgo());
   }
 
   for (const auto& input : meta_def->inputs) {

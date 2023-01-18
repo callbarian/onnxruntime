@@ -92,7 +92,7 @@ class Node {
     Init(std::string{name}, std::string{op_type}, std::string{description},
          std::vector<NodeArg*>{input_args.begin(), input_args.end()},
          std::vector<NodeArg*>{output_args.begin(), output_args.end()},
-         attributes, std::string{domain});
+         attributes, std::string{domain}, 1);
   }
 #endif
 
@@ -173,6 +173,14 @@ class Node {
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
   */
   int SinceVersion() const noexcept { return since_version_; }
+
+  int CachedAlgo() const noexcept { return cached_algo_; }
+
+  size_t CudnnMaxWorkSpace() const noexcept { return cudnn_max_workspace_; }
+
+  void SetCachedAlgo(int algo) noexcept { cached_algo_ = algo; }
+
+  void SetCudnnMaxWorkSpace(size_t workspace) noexcept { cudnn_max_workspace_ = workspace; }
 
   /** Sets the since version (opset version that the Node's operator was first defined in.) for this node.
   @remarks Used during layout transformation for setting since version for layout transformed nodes with
@@ -566,7 +574,8 @@ class Node {
             const std::vector<NodeArg*>& input_args,
             const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
-            const std::string& domain);
+            const std::string& domain,
+            const int cached_algo = 1);
 
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
@@ -613,6 +622,12 @@ class Node {
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;
+
+  // algo to cache for the best perf
+  int cached_algo_ = 1;
+
+  // cudnn max workspace of all algos
+  size_t cudnn_max_workspace_ = 0;
 
   Node::Type node_type_ = Node::Type::Primitive;
 
@@ -921,7 +936,8 @@ class Graph {
                 gsl::span<NodeArg* const> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = kOnnxDomain);
+                const std::string& domain = kOnnxDomain,
+                const int cached_algo = 1);
 
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
@@ -929,11 +945,12 @@ class Graph {
                 std::initializer_list<NodeArg*> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = kOnnxDomain) {
+                const std::string& domain = kOnnxDomain,
+                const int& cached_algo = 1) {
     return AddNode(name, op_type, description,
                    gsl::make_span(input_args.begin(), input_args.end()),
                    gsl::make_span(output_args.begin(), output_args.end()),
-                   attributes, domain);
+                   attributes, domain, cached_algo);
   }
 
   Node& AddNode(const std::string& name,
@@ -942,11 +959,12 @@ class Graph {
                 gsl::span<NodeArg* const> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = kOnnxDomain) {
+                const std::string& domain = kOnnxDomain,
+                const int& cached_algo = 1) {
     return AddNode(name, op_type, description,
                    input_args,
                    gsl::make_span(output_args.begin(), output_args.end()),
-                   attributes, domain);
+                   attributes, domain, cached_algo);
   }
 
   Node& AddNode(const std::string& name,
@@ -955,12 +973,16 @@ class Graph {
                 std::initializer_list<NodeArg*> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = kOnnxDomain) {
+                const std::string& domain = kOnnxDomain,
+                const int& cached_algo = 1) {
     return AddNode(name, op_type, description,
                    gsl::make_span(input_args.begin(), input_args.end()),
                    output_args,
-                   attributes, domain);
+                   attributes, domain, cached_algo);
   }
+
+  // returns default value 1 if string is empty
+  int ToInt(const std::string& value);
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.

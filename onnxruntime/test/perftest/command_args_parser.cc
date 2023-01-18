@@ -52,7 +52,7 @@ namespace perftest {
       "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
-      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
+      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default) 3(cached).\n"
       "\t-q: [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"

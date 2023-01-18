@@ -561,6 +561,11 @@ struct Node final {
   const std::string& Domain() const noexcept { return g_host->Node__Domain(this); }
   const std::string& OpType() const noexcept { return g_host->Node__OpType(this); }
 
+  int CachedAlgo() const noexcept { return g_host->Node__CachedAlgo(this); }
+  size_t CudnnMaxWorkSpace() const noexcept { return g_host->Node__CudnnMaxWorkSpace(this); }
+  void SetCachedAlgo(int algo) const { return g_host->Node__SetCachedAlgo(this, algo); }
+  void SetCudnnMaxWorkSpace(size_t workspace) const { return g_host->Node__SetCudnnMaxWorkSpace(this, workspace); }
+
   int SinceVersion() const noexcept { return g_host->Node__SinceVersion(this); }
 
   const Function* GetFunctionBody() const noexcept { return g_host->Node__GetFunctionBody(this); }

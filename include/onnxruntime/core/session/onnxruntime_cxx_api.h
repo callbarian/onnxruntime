@@ -615,6 +615,8 @@ struct Session : Base<OrtSession> {
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
+
+  void SaveOptimizedModel();
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo

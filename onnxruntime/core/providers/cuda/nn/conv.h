@@ -188,6 +188,9 @@ class Conv : public CudaKernel {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
     s_.handle = CudnnHandle();
+
+    node = &const_cast<onnxruntime::Node&>(info.node());
+    cachedAlgo = static_cast<cudnnConvolutionFwdAlgo_t>(node->CachedAlgo());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -201,6 +204,9 @@ class Conv : public CudaKernel {
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  cudnnConvolutionFwdAlgo_t cachedAlgo;
+  onnxruntime::Node* node;
+
   static const cudnnConvolutionFwdAlgo_t kAllAlgos[];
 };
 

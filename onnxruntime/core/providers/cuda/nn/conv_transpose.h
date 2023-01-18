@@ -15,12 +15,17 @@ namespace cuda {
 template <typename T>
 class ConvTranspose : public CudaKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info) : CudaKernel(info), conv_transpose_attrs_(info){};
+  ConvTranspose(const OpKernelInfo& info) : CudaKernel(info), conv_transpose_attrs_(info) {
+    node = &const_cast<onnxruntime::Node&>(info.node());
+    cachedAlgo = static_cast<cudnnConvolutionBwdDataAlgo_t>(node->CachedAlgo());
+  };
   Status ComputeInternal(OpKernelContext* context) const override;
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
  private:
   ConvTransposeAttributes conv_transpose_attrs_;
+  cudnnConvolutionBwdDataAlgo_t cachedAlgo;
+  onnxruntime::Node* node;
 
   mutable CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> s_;
 };

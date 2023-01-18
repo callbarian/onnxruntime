@@ -1549,6 +1549,12 @@ common::Status InferenceSession::Initialize() {
 
   return status;
 }
+
+common::Status InferenceSession::SaveOptimizedModel() {
+  ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+  return Status::OK();
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

@@ -25,6 +25,14 @@ class OnnxRuntimeTestSession : public TestSession {
     test_inputs_[test_data_id][input_id] = std::move(value);
   }
 
+  void OnnxRuntimeTestSession::UnloadGpuMemory() override{
+    session_.UnloadGpuMemory();
+  }
+
+  void OnnxRuntimeTestSession::ReloadGpuMemory(int device_id, bool clear_model_cache) override {
+    session_.ReloadGpuMemory(device_id, clear_model_cache);
+  }
+
   bool PopulateGeneratedInputTestData();
 
   ~OnnxRuntimeTestSession() = default;

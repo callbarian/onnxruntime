@@ -87,6 +87,49 @@ BFCArena::~BFCArena() {
   }
 }
 
+void BFCArena::FreeAllMemory() {
+  for (const auto& region : region_manager_.regions()) {
+    device_allocator_->Free(region.ptr());
+  }
+
+  for (const auto& reserve_chunk : reserved_chunks_) {
+    device_allocator_->Free(reserve_chunk.first);
+  }
+
+  for (BinNum b = 0; b < kNumBins; b++) {
+    BinFromIndex(b)->free_chunks.clear();
+  }
+
+  chunks_.clear();
+  reserved_chunks_.clear();
+  for (const auto& region : region_manager_.regions()) {
+    region_manager_.RemoveAllocationRegion(region.ptr());
+  }
+
+  free_chunks_list_ = kInvalidChunkHandle;
+  curr_region_allocation_bytes_ = RoundedBytes(std::min(memory_limit_, static_cast<size_t>(initial_chunk_size_bytes_)));
+
+  stats_.Clear();
+  stats_.bytes_limit = static_cast<int64_t>(memory_limit_);
+
+  next_allocation_id_ = 1;
+}
+
+void BFCArena::ResetGpuDevice(OrtDevice::DeviceId device_id) {
+  OrtMemoryInfo* mem_info;
+  OrtDevice cur_device;
+
+  mem_info = &const_cast<OrtMemoryInfo&>(Info());
+  cur_device = mem_info->device;
+  mem_info->device = OrtDevice(cur_device.Type(), cur_device.MemType(), device_id);
+  mem_info->id = device_id;
+
+  mem_info = &const_cast<OrtMemoryInfo&>(device_allocator_->Info());
+  cur_device = mem_info->device;
+  mem_info->device = OrtDevice(cur_device.Type(), cur_device.MemType(), device_id);
+  mem_info->id = device_id;
+}
+
 BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   ORT_ENFORCE(h < chunks_.size());
   return &(chunks_[h]);
@@ -511,6 +554,11 @@ Status BFCArena::Shrink() {
 void BFCArena::DeallocateRawInternal(void* ptr) {
   // Find the chunk from the ptr.
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
+
+  if (h == kDisposedChunkHandle) {
+    return;
+  }
+
   ORT_ENFORCE(h != kInvalidChunkHandle);
 
   // Consider coalescing it.

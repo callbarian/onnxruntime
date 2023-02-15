@@ -123,6 +123,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
+
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       CublasHandle(),

@@ -3493,6 +3493,18 @@ struct OrtApi {
   *
   */ 
   ORT_API2_STATUS(SaveOptimizedModel, _Inout_ OrtSession* session);
+
+  /* Save Optimized model. This is an api intended for use after inferencing, thus caching algo for cudnn (conv, transpose conv)
+  *
+  *
+  */
+  ORT_API2_STATUS(UnloadGpuMemory, _Inout_ OrtSession* session);
+
+  /* Save Optimized model. This is an api intended for use after inferencing, thus caching algo for cudnn (conv, transpose conv)
+  *
+  *
+  */
+  ORT_API2_STATUS(ReloadGpuMemory, _Inout_ OrtSession* session, int device_id, bool clear_model_cache);
 };
 
 /*

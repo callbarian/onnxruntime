@@ -750,6 +750,22 @@ ORT_API_STATUS_IMPL(OrtApis::SaveOptimizedModel, _Inout_ OrtSession* sess) {
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::UnloadGpuMemory, _Inout_ OrtSession* sess) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto status = session->UnloadGpuMemory();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReloadGpuMemory, _Inout_ OrtSession* sess, int device_id, bool clear_model_cache) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto status = session->ReloadGpuMemory(device_id, clear_model_cache);
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2556,6 +2572,8 @@ static constexpr OrtApi ort_api_1_to_12 = {
     // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SaveOptimizedModel,
+    &OrtApis::UnloadGpuMemory,
+    &OrtApis::ReloadGpuMemory,
     // End of Version 999
 
 };

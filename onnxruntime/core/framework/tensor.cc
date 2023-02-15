@@ -175,6 +175,17 @@ void Tensor::ReleaseBuffer() {
   }
 }
 
+void Tensor::ReassignMemory(std::shared_ptr<IAllocator> allocator) {
+  if (shape_.Size() < 0) ORT_THROW("shape.Size() must >=0");
+  void* p_data = nullptr;
+
+  SafeInt<size_t> len = 0;
+  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &len))
+    ORT_THROW("tensor failed memory size calculation");
+
+  p_data_ = allocator->Alloc(len);
+}
+
 #ifdef ENABLE_TRAINING
 bool Tensor::CheckIsContiguous() const {
   if (strides_.empty()) {

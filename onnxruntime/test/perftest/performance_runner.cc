@@ -108,13 +108,13 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 }
 
-Status PerformanceRunner::Run() {
+Status PerformanceRunner::Run(std::thread::id id) {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
 
   // warm up
-  ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  //ORT_RETURN_IF_ERROR(RunOneIteration<true>());
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
@@ -131,6 +131,33 @@ Status PerformanceRunner::Run() {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
+
+  std::chrono::time_point<std::chrono::high_resolution_clock> first_unload_reload_start;
+  std::chrono::time_point<std::chrono::high_resolution_clock> run_after_1st_reload_start; 
+
+  auto clear_model_cache = false;
+  first_unload_reload_start = std::chrono::high_resolution_clock::now();
+  session_->UnloadGpuMemory();
+  session_->ReloadGpuMemory(0, clear_model_cache);
+  //session_->UnloadGpuMemory();
+  for (auto i = 0; i < 5; i++) {
+    session_->UnloadGpuMemory();
+    int device_id;
+    if (i%2 == 0) {
+      device_id = 0;
+    }else {
+      device_id = 1;
+    }
+    //device_id = 1;
+    printf(std::to_string(device_id).c_str());
+    session_->ReloadGpuMemory(device_id, clear_model_cache);
+
+    std::cout << "Run id: " << id << " Device id: " << device_id << std::endl;
+    ORT_RETURN_IF_ERROR(RepeatedTimesTest());
+  }
+  ORT_RETURN_IF_ERROR(RepeatedTimesTest());
+  run_after_1st_reload_start = std::chrono::high_resolution_clock::now();
+
   performance_result_.end = std::chrono::high_resolution_clock::now();
 
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
@@ -150,6 +177,8 @@ Status PerformanceRunner::Run() {
             << "Number of inferences per second: " << performance_result_.time_costs.size() / inference_duration.count() << " \n"
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
+            << "\n---Added Test: UnLoad and Reload Time--- " << "\n"
+            << "Unload, Reload, Run time " << std::chrono::duration<double>(run_after_1st_reload_start - first_unload_reload_start).count() << "s\n"
             << std::endl;
 
   return Status::OK();

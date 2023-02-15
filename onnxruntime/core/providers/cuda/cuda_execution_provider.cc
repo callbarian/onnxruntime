@@ -2513,4 +2513,74 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
+inline Status CUDAExecutionProvider::ResetGpuDevice(OrtDevice::DeviceId device_id) {
+  info_.device_id = device_id;
+
+  auto& context = GetPerThreadContext();
+  auto cublasHandle = context.CublasHandle();
+  auto cudnnHandle = context.CudnnHandle();
+  auto* cudaGraph = context.GetCudaGraph();
+
+  // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
+  // here may be bad, and the destroy calls can throw.
+  // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
+  try {
+    CUBLAS_CALL(cublasDestroy(cublasHandle));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
+  }
+
+  try {
+    CUDNN_CALL(cudnnDestroy(cudnnHandle));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
+  }
+
+
+  if (stream_) {
+    CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
+  }
+
+  auto start_time = std::chrono::steady_clock::now();
+  // Do a trivial cuda operation that will cause JIT to occur
+  {
+    CUDA_CALL_THROW(cudaSetDevice(device_id));
+    // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
+    CUDA_CALL_THROW(cudaDeviceSynchronize());
+  }
+  auto end_time = std::chrono::steady_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+  if (duration > std::chrono::seconds{30}) {
+    LOGS_DEFAULT(WARNING) << "CUDA took " << duration.count() << " seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
+  }
+
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, device_id));
+  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+  
+  CUBLAS_CALL_THROW(cublasCreate(&cublasHandle));
+  CUBLAS_CALL_THROW(cublasSetStream(cublasHandle, stream_));
+
+  CUDNN_CALL_THROW(cudnnCreate(&cudnnHandle));
+  // New cudnn handle has to have different value from the previous one.
+  // Conv and TransposeConv will compare current and previous handles to recompute CudnnWorkSpace
+  if (cudnnHandle == context.CudnnHandle()) {
+    cudnnHandle_t temp_handle;
+    cudnnCreate(&temp_handle);
+    cudnnDestroy(cudnnHandle);
+    cudnnHandle = temp_handle;
+  }
+  CUDNN_CALL_THROW(cudnnSetStream(cudnnHandle, stream_));
+
+  context.SetCublasHandle(cublasHandle);
+  context.SetCudnnHandle(cudnnHandle);
+  context.SetCudaStream(stream_);
+
+  context.ClearConstOnes();
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  cudaGraph->SetStream(stream_);
+#endif
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

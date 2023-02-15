@@ -88,6 +88,12 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T>
 Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const {
+  auto cudnn_handle_changed = s_.handle != CudnnHandle();
+  //cudnn_handle_changed = true;
+  if (cudnn_handle_changed) {
+    s_.handle = CudnnHandle();
+  }
+
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -234,16 +240,15 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                          gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
 
+    TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
       ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     } else if (bias_expected) {
-      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
       auto malloc_size = b_dims[1] * sizeof(CudaT);
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -352,6 +357,17 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
     }
   }
+
+  if (cudnn_handle_changed) {
+    const auto& perf = s_.cached_benchmark_results.at(x_dims);
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
+
+    auto& perf_deconst = const_cast<CudnnConvState<cudnnConvolutionFwdAlgoPerfStruct>::PerfResultParams&>(perf);
+    perf_deconst.memory = 0;
+    CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf_deconst.algo, &perf_deconst.memory));
+    s_.workspace_bytes = perf_deconst.memory;
+  }
+
   return Status::OK();
 }
 
@@ -362,6 +378,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
   }
+
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   IAllocatorUniquePtr<void> workspace = GetWorkSpace();

@@ -96,6 +96,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+  Status ResetGpuDevice(OrtDevice::DeviceId device_id) override;
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
@@ -126,12 +128,35 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cublas_handle_;
     }
 
+    void SetCublasHandle(cublasHandle_t handle) {
+      cublas_handle_ = handle;
+    }
+
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
 
+    void SetCudnnHandle(cudnnHandle_t handle) {
+      cudnn_handle_ = handle;
+    }
+
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
+    }
+
+    void SetCudaStream(cudaStream_t stream) {
+      stream_ = stream;
+    }
+
+    CUDAGraph* GetCudaGraph() {
+      return &cuda_graph_;
+    }
+
+    void ClearConstOnes() {
+      constant_ones_float_ = nullptr;
+      constant_ones_double_ = nullptr;
+      constant_ones_half_ = nullptr;
+      constant_ones_bfloat16_ = nullptr;
     }
 
     template <typename T>

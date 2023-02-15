@@ -617,6 +617,8 @@ struct Session : Base<OrtSession> {
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
 
   void SaveOptimizedModel();
+  void UnloadGpuMemory();
+  void ReloadGpuMemory(int device_id, bool clear_model_cache);
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo

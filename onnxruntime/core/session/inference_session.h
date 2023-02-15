@@ -121,6 +121,13 @@ class InferenceSession {
     OnlyApplyMinimalBuildOptimizations,
   };
 
+  
+  enum class DataTransferMode {
+    CPU2GPU,
+    GPU2CPU
+  };
+
+
 #endif
 
   /**
@@ -301,6 +308,14 @@ class InferenceSession {
   common::Status Initialize() ORT_MUST_USE_RESULT;
 
   common::Status SaveOptimizedModel();
+
+  common::Status UnloadGpuMemory();
+
+  //common::Status ReloadGpuMemory(const std::vector<std::string>& feed_names,
+  //                               const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+  //                               std::vector<OrtValue>* p_fetches,
+  //                               const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
+  common::Status ReloadGpuMemory(int device_id = 0, bool clear_model_cache = false);
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
@@ -541,6 +556,7 @@ class InferenceSession {
   ExecutionProviders execution_providers_;
 
  private:
+  int device_id = 0;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
   void ConstructorCommon(const SessionOptions& session_options,
@@ -638,6 +654,12 @@ class InferenceSession {
                                 SessionState& session_state,
                                 bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
 
+  common::Status TransferBetweenDevices(DataTransferMode mode, std::unordered_map<int, std::unique_ptr<Tensor>>& model_weights);
+
+  common::Status FreeGpuMemory();
+
+  common::Status ResetGpuDeviceId(int device_id);
+
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
   InsertCastTransformer insert_cast_transformer_;
@@ -660,6 +682,8 @@ class InferenceSession {
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
+
+  std::unordered_map<int, std::unique_ptr<Tensor>> model_weights_;
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.

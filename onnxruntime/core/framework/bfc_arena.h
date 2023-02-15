@@ -67,6 +67,9 @@ class BFCArena : public IAllocator {
 
   ~BFCArena() override;
 
+  void FreeAllMemory();
+  void ResetGpuDevice(OrtDevice::DeviceId device_id);
+
   //If size is 0, then this function returns either NULL,
   //or a unique pointer value that can later be successfully
   //passed to free(). Whatever, do not dereference that pointer
@@ -104,6 +107,7 @@ class BFCArena : public IAllocator {
   // kInvalidChunkHandle means an invalid chunk
   using ChunkHandle = size_t;
   static const size_t kInvalidChunkHandle = static_cast<size_t>(-1);
+  static const size_t kDisposedChunkHandle = static_cast<size_t>(-1) - 1;
 
   using BinNum = int;
   static const int kInvalidBinNum = -1;
@@ -298,7 +302,13 @@ class BFCArena : public IAllocator {
     }
 
     ChunkHandle get_handle(const void* p) const {
-      return RegionFor(p)->get_handle(p);
+      auto alloc_region = RegionFor(p);
+      // If regions are empty and therefore failed to locate AllocationRegion,
+      // return kDisposedChunkHandle. Some functions enforce that the handle is not kInvalidChunkHandle.
+      if (!alloc_region && regions_.empty()) {
+        return kDisposedChunkHandle;
+      }
+      return alloc_region->get_handle(p);
     }
 
     void set_handle(const void* p, ChunkHandle h) {
@@ -320,6 +330,11 @@ class BFCArena : public IAllocator {
     }
 
     const AllocationRegion* RegionFor(const void* p) const {
+      if (regions_.empty()) {
+        LOGS_DEFAULT(VERBOSE) << "Could not find Region for " << p << " because regions are empty";
+        return nullptr;
+      }
+
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), p, &Comparator);
 
@@ -442,7 +457,7 @@ class BFCArena : public IAllocator {
   }
 
   Bin* BinForSize(size_t bytes) { return BinFromIndex(BinNumForSize(bytes)); }
-
+  
   char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.

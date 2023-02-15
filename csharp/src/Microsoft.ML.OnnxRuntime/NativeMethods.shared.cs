@@ -248,6 +248,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr InvokeOp;
         public IntPtr ReleaseOp;
         public IntPtr SessionOptionsAppendExecutionProvider;
+        public IntPtr CopyKernelInfo;
+        public IntPtr ReleaseKernelInfo;
+
+        public IntPtr SaveOptimizedModel;
+        public IntPtr UnloadGpuMemory;
+        public IntPtr ReloadGpuMemory;
     }
 
     internal static class NativeMethods
@@ -423,6 +429,10 @@ namespace Microsoft.ML.OnnxRuntime
                 = (DSessionOptionsAppendExecutionProvider)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider, 
                     typeof(DSessionOptionsAppendExecutionProvider));
+
+            OrtSaveOptimizedModel = (DOrtSaveOptimizedModel)Marshal.GetDelegateForFunctionPointer(api_.SaveOptimizedModel, typeof(DOrtSaveOptimizedModel));
+            OrtUnloadGpuMemory = (DOrtUnloadGpuMemory)Marshal.GetDelegateForFunctionPointer(api_.UnloadGpuMemory, typeof(DOrtUnloadGpuMemory));
+            OrtReloadGpuMemory = (DOrtReloadGpuMemory)Marshal.GetDelegateForFunctionPointer(api_.ReloadGpuMemory, typeof(DOrtReloadGpuMemory));
         }
 
         internal class NativeLib
@@ -989,6 +999,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtAddInitializer OrtAddInitializer;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         /// <summary>
         /// Append an execution provider instance to the native OrtSessionOptions instance.
         /// 
@@ -1001,7 +1012,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptionsKeys">Configuration keys to add</param>
         /// <param name="providerOptionsValues">Configuration values to add</param>
         /// <param name="numKeys">Number of configuration keys</param>
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider(
                                                IntPtr /*(OrtSessionOptions*)*/ options,
                                                IntPtr /*(const char*)*/ providerName,
@@ -1710,7 +1720,43 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
 
-#endregion
+        #endregion
+
+        #region MD.AI
+
+        /// <summary>
+        /// Explicitly save optimized model. If inference was runned, cached algo will be saved with the optimized model.
+        /// </summary>
+        /// <param name="str"></param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtSaveOptimizedModel(IntPtr session);
+
+        public static DOrtSaveOptimizedModel OrtSaveOptimizedModel;
+
+        /// <summary>
+        /// Unload all gpu memory. The model weights will be cached to RAM.
+        /// If already cached,
+        /// </summary>
+        /// <param name="session"></param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtUnloadGpuMemory(IntPtr session);
+
+        public static DOrtUnloadGpuMemory OrtUnloadGpuMemory;
+
+        /// <summary>
+        /// Reload model weights to GPU. 
+        /// </summary>
+        /// <param name="session"></param>
+        /// <param name="device_id"> GPU device id where to send the model weights.</param>
+        /// <param name="clear_model_cache"> True will clear the RAM cache. When UnloadGpuMemory is called</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer((CallingConvention.Winapi))]
+        public delegate IntPtr DOrtReloadGpuMemory(IntPtr session, int device_id, bool clear_model_cache);
+
+        public static DOrtReloadGpuMemory OrtReloadGpuMemory;
+        #endregion
 
         public static byte[] GetPlatformSerializedString(string str)
         {

@@ -16,6 +16,8 @@ template <typename T>
 class ConvTranspose : public CudaKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : CudaKernel(info), conv_transpose_attrs_(info) {
+    s_.handle = CudnnHandle();
+
     node = &const_cast<onnxruntime::Node&>(info.node());
     cachedAlgo = static_cast<cudnnConvolutionBwdDataAlgo_t>(node->CachedAlgo());
   };

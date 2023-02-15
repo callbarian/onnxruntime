@@ -16,6 +16,16 @@ Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> 
   return Status::OK();
 }
 
+Status DataTransferManager::RemoveDataTransfer(const IDataTransfer* data_transfer) {
+  for (auto citer = datatransfers_.begin(); citer!=datatransfers_.end(); ++citer) {
+    if ((*citer).get() == data_transfer) {
+      datatransfers_.erase(citer);
+      return Status::OK();
+    }
+  }
+  return Status(ONNXRUNTIME, FAIL, "no matching data_transfer registered in datatransfers_");
+}
+
 const IDataTransfer* DataTransferManager::GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   for (auto& data_transfer : datatransfers_) {
     if (!data_transfer->CanCopy(src_device, dst_device)) {

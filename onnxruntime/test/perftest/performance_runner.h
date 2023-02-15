@@ -44,7 +44,7 @@ class PerformanceRunner {
   PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd);
 
   ~PerformanceRunner();
-  Status Run();
+  Status Run(std::thread::id id);
 
   inline const PerformanceResult& GetResult() const { return performance_result_; }
 

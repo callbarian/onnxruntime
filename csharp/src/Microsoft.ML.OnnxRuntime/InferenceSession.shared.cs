@@ -761,6 +761,25 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Explicitly saves optimized model. Run inference at least once In order to save cached algo, and then call this function.
+        /// </summary>
+        public void SaveOptimizedModel()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSaveOptimizedModel(_nativeHandle));
+        }
+
+        public void UnloadGpuMemory()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtUnloadGpuMemory(_nativeHandle));
+        }
+
+        public void ReloadGpuMemory(int device_id, bool clear_model_cache)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtReloadGpuMemory(_nativeHandle, device_id, clear_model_cache));
+        }
+        
+
         #endregion
 
         #region private methods

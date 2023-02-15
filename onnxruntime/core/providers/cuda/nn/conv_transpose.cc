@@ -30,9 +30,9 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t>& s, cudnnConvolutionBwdDataAlgo_t algo,
+cudnnStatus_t GetWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t>& s, cudnnConvolutionBwdDataAlgo_t algo,
                                size_t* sz) {
-  return cudnnGetConvolutionBackwardDataWorkspaceSize(s.handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, algo, sz);
+  return cudnnGetConvolutionBackwardDataWorkspaceSize(handle, s.w_desc, s.x_tensor, s.conv_desc, s.y_tensor, algo, sz);
 }
 
 template <typename T>
@@ -43,6 +43,12 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+
+  auto cudnn_handle_changed = s_.handle != CudnnHandle();
+  //cudnn_handle_changed = true;
+  if (cudnn_handle_changed) {
+    s_.handle = CudnnHandle();
+  }
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
@@ -165,7 +171,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
           node->SetCudnnMaxWorkSpace(AlgoSearchWorkspaceSize);
         } else if (cudnn_conv_algo == 3) {
           perf.algo = cachedAlgo;
-          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(CudnnHandle(), s_, perf.algo, &perf.memory));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {
@@ -196,6 +202,16 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       if (Y->Shape().Size() == 0) {
         return Status::OK();
       }
+    }
+
+    if (cudnn_handle_changed) {
+      const auto& perf = s_.cached_benchmark_results.at(x_dims);
+      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
+
+      auto& perf_deconst = const_cast<CudnnConvState<cudnnConvolutionBwdDataAlgoPerfStruct>::PerfResultParams&>(perf);
+      perf_deconst.memory = 0;
+      CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(CudnnHandle(), s_, perf_deconst.algo, &perf_deconst.memory));
+      s_.workspace_bytes = perf_deconst.memory;
     }
 
     const auto alpha = Consts<CudaT>::One;

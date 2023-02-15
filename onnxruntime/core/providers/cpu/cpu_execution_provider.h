@@ -43,6 +43,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     InsertAllocator(CreateAllocator(device_info));
   }
 
+  int GetDeviceId() const override { return device_.Id(); }
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -50,6 +51,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;
+  OrtDevice device_;
 };
 
 // Registers all available CPU kernels

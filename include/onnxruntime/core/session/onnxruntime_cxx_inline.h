@@ -1369,6 +1369,14 @@ inline void Session::SaveOptimizedModel() {
   ThrowOnError(GetApi().SaveOptimizedModel(p_));
 }
 
+inline void Session::UnloadGpuMemory() {
+  ThrowOnError(GetApi().UnloadGpuMemory(p_));
+}
+
+inline void Session::ReloadGpuMemory(_In_ int device_id, _In_ bool clear_model_cache) {
+  ThrowOnError(GetApi().ReloadGpuMemory(p_, device_id, clear_model_cache));
+}
+
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));
   return *this;

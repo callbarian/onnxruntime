@@ -45,7 +45,6 @@ void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
 void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
   return ort_allocator_->Free(ort_allocator_, p);
 }
-
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)

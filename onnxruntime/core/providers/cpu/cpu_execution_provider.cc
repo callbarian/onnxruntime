@@ -32,6 +32,8 @@ void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager
     // share our allocator
     allocator_manager.InsertAllocator(GetAllocator(cpu_device.Id(), OrtMemTypeDefault));
   }
+
+  device_ = cpu_device;
 }
 
 // Forward declarations of op kernels

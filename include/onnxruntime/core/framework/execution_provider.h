@@ -198,6 +198,8 @@ class IExecutionProvider {
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
 
+  virtual common::Status ResetGpuDevice(OrtDevice::DeviceId device_id) { return Status::OK(); }
+
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'

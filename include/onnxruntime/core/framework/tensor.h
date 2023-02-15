@@ -253,6 +253,11 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+  /*
+   * Reassign Memory
+   */
+  void ReassignMemory(std::shared_ptr<IAllocator> allocator);
+
 #ifdef ENABLE_TRAINING
   /**
    * Get the strides of the tensor.

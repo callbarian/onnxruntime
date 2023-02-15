@@ -16,6 +16,8 @@ namespace onnxruntime {
 namespace perftest {
 
 int iter = 0;
+std::vector<std::pair<float*, int>> prev_output_data;
+
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
@@ -23,7 +25,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
-  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+  auto cur_output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
                                     output_names_raw_ptr.data(), output_names_raw_ptr.size());
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
@@ -35,6 +37,45 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   //  iter += 1;
   //}
 
+  //auto compare_values = false;
+  //if (compare_values && !prev_output_data.empty()) {
+  //  for (auto i = 0; i < prev_output_data.size(); i++) {
+  //    const auto& cur_val = cur_output_values[i];
+  //    const auto& prev_val = prev_output_data[i];
+
+  //    auto cur_data = cur_val.GetTensorData<FLOAT>();
+  //    auto cur_data_info = cur_val.GetTensorTypeAndShapeInfo().GetShape();
+  //    auto cur_data_len = std::accumulate(cur_data_info.begin(), cur_data_info.end(), decltype(cur_data_info)::value_type(0));
+
+  //    auto* prev_data = prev_val.first;
+  //    auto prev_data_len = prev_val.second;
+
+  //    if (cur_data_len != prev_data_len) {
+  //      std::cout << "compare values failed " << cur_data_len << " " << prev_data_len << std::endl;
+  //    }
+
+  //    for (auto j = 0; j < cur_data_len; j++) {
+  //      if (cur_data[j] != prev_data[j]) {
+  //        std::cout << "compare values failed " << cur_data[j] << " " << prev_data[j] << std::endl;
+  //      }
+  //    }
+  //  }
+  //}else {
+  //  for (auto i = 0; i < cur_output_values.size(); i++) {
+  //    auto& cur_val = cur_output_values[i];
+  //    auto cur_data = cur_val.GetTensorData<FLOAT>();
+  //    auto cur_data_info = cur_val.GetTensorTypeAndShapeInfo().GetShape();
+  //    auto cur_data_len = std::accumulate(cur_data_info.begin(), cur_data_info.end(), decltype(cur_data_info)::value_type(0));
+  //    
+
+  //    auto new_data = (float*)malloc( sizeof(float) * cur_data_len);
+  //    prev_output_data.emplace_back(std::make_pair(new_data, (int)cur_data_len));
+  //    for (auto j = 0; j<cur_data_len; j++) {
+  //      new_data[j] = cur_data[j];
+  //    }
+  //  }
+
+  //}
   return duration_seconds;
 }
 
@@ -57,6 +98,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     OrtCUDAProviderOptions cuda_options;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    cuda_options.device_id = 1;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else

@@ -50,6 +50,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
+
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -465,6 +466,8 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
+  auto status = FreeGpuMemory();
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1550,9 +1553,141 @@ common::Status InferenceSession::Initialize() {
   return status;
 }
 
+
 common::Status InferenceSession::SaveOptimizedModel() {
   ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
   return Status::OK();
+}
+
+common::Status InferenceSession::UnloadGpuMemory() {
+  if (model_weights_.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(TransferBetweenDevices(DataTransferMode::GPU2CPU, model_weights_));
+  }
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(FreeGpuMemory());
+  return Status::OK();
+}
+
+common::Status InferenceSession::ReloadGpuMemory(int device_id, bool clear_model_cache) {
+  if (model_weights_.empty()) {
+    return Status(ONNXRUNTIME, FAIL, "model_weights are not cached. Please call UnloadGpuMemory first.");
+  }
+
+  auto exec_provider = execution_providers_.Get(kCudaExecutionProvider);
+  if (device_id != exec_provider->GetDeviceId()) {
+    // Make change to execution provider, BFCArena, perthreadContext
+    ORT_RETURN_IF_ERROR_SESSIONID_(ResetGpuDeviceId(device_id));
+  }
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(TransferBetweenDevices(DataTransferMode::CPU2GPU, model_weights_));
+
+  if (clear_model_cache) {
+    model_weights_.clear();
+  }
+
+  return Status::OK();
+}
+
+inline common::Status InferenceSession::TransferBetweenDevices(DataTransferMode mode, std::unordered_map<int, std::unique_ptr<Tensor>>& model_weights) {
+  std::string provider_name;
+  switch (mode) {
+    case (DataTransferMode::GPU2CPU):
+      provider_name = kCpuExecutionProvider;
+      break;
+    case (DataTransferMode::CPU2GPU):
+      provider_name = kCudaExecutionProvider;
+      break;
+  }
+
+  auto exec_provider = execution_providers_.Get(provider_name);
+  auto allocator = exec_provider->GetAllocator(exec_provider->GetDeviceId(), OrtMemTypeDefault);
+
+  // We assume the tensors had been initialized in cuda allocator.
+  auto& weights = session_state_->GetInitializedTensors();
+
+  for (auto citer = weights.begin(); citer != weights.end(); ++citer) {
+    auto node_name = (*citer).first;
+    auto ort_value = (*citer).second;
+    auto& tensor = ort_value.Get<Tensor>();
+
+    if (tensor.Location().device.Type() == OrtDevice::CPU) {
+      continue;
+    }
+
+    const Tensor* src_tensor = nullptr;
+    Tensor* dest_tensor = nullptr;
+    if (mode == DataTransferMode::GPU2CPU) {
+      model_weights[node_name] = std::make_unique<Tensor>(tensor.DataType(), tensor.Shape(), allocator);
+
+      src_tensor = &tensor;
+      dest_tensor = model_weights[node_name].get();
+    } else if (mode == DataTransferMode::CPU2GPU) {
+      src_tensor = model_weights[node_name].get();
+      dest_tensor = &const_cast<Tensor&>(tensor);
+      dest_tensor->ReassignMemory(allocator);
+    }
+
+    Status copy_status = data_transfer_mgr_.CopyTensor(*src_tensor, *dest_tensor);
+    if (!copy_status.IsOK()) {
+      if (copy_status.ErrorMessage().empty()) {
+        // The windows execution provider does not return any error message today for CopyTensor since it is
+        // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
+        return Status(copy_status.Category(), copy_status.Code(),
+                      "Failed to copy tensor to " + (*dest_tensor).Location().ToString());
+      }
+    }
+  }
+  
+  return Status::OK();
+}
+
+inline common::Status InferenceSession::FreeGpuMemory() {
+  auto cuda_exec_provider = execution_providers_.Get(kCudaExecutionProvider);
+  if (cuda_exec_provider == nullptr) {
+    return Status(ONNXRUNTIME, FAIL, "Could not get CUDAExecutionProvider in ReloadGpuMemory");
+  }
+  
+  auto allocator = cuda_exec_provider->GetAllocator(cuda_exec_provider->GetDeviceId(), OrtMemTypeDefault);
+  auto bfc_arena = static_cast<BFCArena*>(allocator.get());
+  bfc_arena->FreeAllMemory();
+
+  return Status::OK();
+}
+
+inline common::Status InferenceSession::ResetGpuDeviceId(int device_id) {
+  const auto cuda_exec_provider = execution_providers_.Get(kCudaExecutionProvider);
+  if (cuda_exec_provider == nullptr) {
+    return Status(ONNXRUNTIME, FAIL, "Could not get CUDAExecutionProvider in ReloadGpuMemory");
+  }
+
+  auto cur_device_id = cuda_exec_provider->GetDeviceId();
+  if (device_id == cur_device_id) {
+    return Status::OK();
+  }
+
+  const auto allocator = cuda_exec_provider->GetAllocator(cur_device_id, OrtMemTypeDefault);
+
+  static_cast<BFCArena*>(allocator.get())->ResetGpuDevice(device_id);
+
+  Status status;
+  status = cuda_exec_provider->ResetGpuDevice(device_id);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+  auto gpu_transfer = data_transfer_mgr_.GetDataTransfer(device, device);
+  status = data_transfer_mgr_.RemoveDataTransfer(gpu_transfer);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  status = data_transfer_mgr_.RegisterDataTransfer(cuda_exec_provider->GetDataTransfer());
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  return status;
 }
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -2322,6 +2457,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 // The returned value should be used in the execution.
 const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& run_options,
                                                             std::unique_ptr<logging::Logger>& new_run_logger) {
+
   const logging::Logger* run_logger;
 
   // create a per-run logger if we can

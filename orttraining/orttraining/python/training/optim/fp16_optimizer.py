@@ -14,7 +14,7 @@ def FP16_Optimizer(optimizer, **kwargs):
         Apex, DeepSpeed, Megatron-LM.
 
     Usage:
-        1. DeepSpeed ZeRO Optimizer Override:
+        1. DeepSpeed ZeRO Optimizer Override：
 
         >>> from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer
         >>> optimizer = Adam(param_groups,

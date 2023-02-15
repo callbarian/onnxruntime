@@ -21,7 +21,8 @@ TEST(TensorOpTest, Reshape) {
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -82,7 +83,8 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_WithAllowZero) {
@@ -93,9 +95,10 @@ TEST(TensorOpTest, Reshape_WithAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 1);
   test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kTensorrtExecutionProvider});
+           {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
@@ -105,9 +108,10 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
   test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
   // TensorRT doesn't support dynamic shape tensor for now
+  // Nuphar only supports reshape shape from initializer
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kTensorrtExecutionProvider});
+           {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
@@ -119,7 +123,8 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
 
   // TensorRT doesn't support dynamic shape tensor for now
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {

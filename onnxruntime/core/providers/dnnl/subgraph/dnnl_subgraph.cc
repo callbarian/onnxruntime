@@ -9,7 +9,7 @@ namespace ort_dnnl {
 
 DnnlTensor DnnlNode::empty_tensor_ = DnnlTensor("");
 
-DnnlTensor::DnnlTensor(const NodeArg* arg, bool isConstantInitializer) {
+DnnlTensor::DnnlTensor(const NodeArg* arg) {
   if (!arg || !arg->Exists()) {
     tensor_name_ = "";
   } else {
@@ -20,7 +20,6 @@ DnnlTensor::DnnlTensor(const NodeArg* arg, bool isConstantInitializer) {
   arg_type_ = arg->Type();
   arg_type_proto_ = ONNX_NAMESPACE::TypeProto::Create();
   arg_type_proto_->copy_from(arg->TypeAsProto());
-  isConstant_ = isConstantInitializer;
 }
 
 DnnlTensor::DnnlTensor(std::string name) {
@@ -123,10 +122,6 @@ bool DnnlTensor::IsDynamic() {
     }
   }
   return false;
-}
-
-bool DnnlTensor::IsConstant() {
-  return isConstant_;
 }
 
 bool DnnlTensor::Exists() {
@@ -360,9 +355,7 @@ void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
     for (auto input : node->InputDefs()) {
       if (input && input->Exists() && input->Name() != "") {
         if (!dnnl_tensors_.count(input->Name())) {
-          dnnl_tensors_[input->Name()] = 
-            std::make_unique<DnnlTensor>(input,
-                                         graph_viewer.IsConstantInitializer(input->Name(), true));
+          dnnl_tensors_[input->Name()] = std::make_unique<DnnlTensor>(input);
         }
         dnnl_tensors_[input->Name()]->AddConsumer(DnnlNodeArg(dnnl_node, index, false));
         inputs.push_back(dnnl_tensors_[input->Name()].get());

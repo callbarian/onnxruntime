@@ -3,14 +3,13 @@
 
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
 
-#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int roundoff(int v, int d) {
+inline int roundoff(int v, int d) {
   return (v + d - 1) / d * d;
 }
 
@@ -28,12 +27,12 @@ Status GemmInt8(int m, int n, int k,
   // 1. leading dimension is multiples of 4
   // 2. A, B is 32-bit aligned
 
-  constexpr int mask = 0x1F;
+  const int mask = 0x1F;
   int lda_aligned = lda;
   IAllocatorUniquePtr<int8_t> a_padded;
   if ((mask & lda_aligned) != 0) {
     lda_aligned = roundoff(lda, 32);
-    a_padded = cuda_kernel->GetScratchBuffer<int8_t>(SafeInt<size_t>(m) * lda_aligned);
+    a_padded = cuda_kernel->GetScratchBuffer<int8_t>(m * lda_aligned);
     cudaMemcpy2DAsync(a_padded.get(), lda_aligned, a, lda, k, m, cudaMemcpyDeviceToDevice, stream);
   }
 
@@ -41,7 +40,7 @@ Status GemmInt8(int m, int n, int k,
   IAllocatorUniquePtr<int8_t> b_padded;
   if ((mask & ldb_aligned) != 0) {
     ldb_aligned = roundoff(ldb, 32);
-    b_padded = cuda_kernel->GetScratchBuffer<int8_t>(SafeInt<size_t>(k) * ldb_aligned);
+    b_padded = cuda_kernel->GetScratchBuffer<int8_t>(k * ldb_aligned);
     cudaMemcpy2DAsync(b_padded.get(), ldb_aligned, b, ldb, n, k, cudaMemcpyDeviceToDevice, stream);
   }
 

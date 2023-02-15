@@ -70,6 +70,9 @@ TargetFeature GetTargetInfo(const codegen::CodeGenSettings& settings) {
   TargetFeature feature;
 
   std::string target_str = "";
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    target_str = settings.GetOptionValue(nuphar::kNupharCodeGenTarget);
+  }
 
   bool isAVX = false;
   bool isAVX2 = false;

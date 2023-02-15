@@ -52,27 +52,29 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
   }
 
   // Start, Limit and Delta are stored in CPU.
-  T start = *(start_tensor.Data<T>());
-  T limit = *(limit_tensor.Data<T>());
+  T start = *(start_tensor.template Data<T>());
+  T limit = *(limit_tensor.template Data<T>());
 
   T delta = T(1);
   if (delta_tensor_ptr != nullptr) {
-    delta = *(delta_tensor_ptr->Data<T>());
+    delta = *(delta_tensor_ptr->template Data<T>());
   }
 
   if (delta == T(0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  double num = (static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta);
-  int count = static_cast<int>(ceil(num));
+  int count = static_cast<int>(ceil(1.0 * (limit - start) / delta));
   if (count <= 0)
     count = 0;
   TensorShape shape = {static_cast<int64_t>(count)};
-  T* y = ctx->Output(0, shape)->MutableData<T>();
+  T* y = ctx->Output(0, shape)->template MutableData<T>();
 
   if (count > 0) {
-    ORT_RETURN_IF_ERROR(RangeImpl(stream, start, delta, count, y));
+    if (!RangeImpl(stream, start, delta, count, y)) {
+      CUDA_CALL(cudaGetLastError());
+      return Status(common::ONNXRUNTIME, common::FAIL);
+    }
   }
 
   return Status::OK();

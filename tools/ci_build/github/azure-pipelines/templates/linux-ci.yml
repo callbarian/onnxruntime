@@ -26,7 +26,6 @@ jobs:
   timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-    skipComponentGovernanceDetection: true
   pool: ${{ parameters.AgentPool }}
   ${{ if ne(parameters.Strategy, '') }}:
     strategy:
@@ -75,4 +74,7 @@ jobs:
         parameters:
           DockerImageTag: ${{ parameters.DockerImageTag }}
           BuildConfig: ${{ parameters.BuildConfig }}
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: clean-agent-build-directory-step.yml

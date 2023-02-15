@@ -39,7 +39,8 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 }  // namespace
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   const std::string& provider_type,
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
@@ -68,7 +69,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
-    const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
+    const KernelCreateInfo* kernel_info = nullptr;
+    for (auto registry : kernel_registries) {
+      auto st = registry->TryFindKernel(*node, provider_type, &kernel_info);
+      if (st.IsOK())
+        break;
+    }
     // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
     node_to_kernel.insert({node_id, kernel_info});

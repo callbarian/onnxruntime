@@ -10,13 +10,12 @@ class DmlOperatorGemm : public DmlOperator, public GemmHelper
 {
 public:
     DmlOperatorGemm(const MLOperatorKernelCreationContext& kernelInfo)
-        :   DmlOperator(kernelInfo),
+        :   DmlOperator(kernelInfo), 
             GemmHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
-        auto kernelInputIndices = std::vector<std::optional<uint32_t>> { 0, 1, 2 };
-        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
+        DmlOperator::Initialize(kernelInfo);
 
         bool containsBiasTensor = kernelInfo.IsInputValid(2);
 
@@ -56,6 +55,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Gemm, DmlOperatorGemm);
-DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedGemm, DmlOperatorGemm);
+DML_OP_DEFINE_CREATION_FUNCTION(FusedGemm, DmlOperatorGemm);
 
 } // namespace Dml

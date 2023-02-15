@@ -30,21 +30,13 @@ export const registerBackend = (name: string, backend: Backend, priority: number
     const currentBackend = backends[name];
     if (currentBackend === undefined) {
       backends[name] = {backend, priority};
-    } else if (currentBackend.priority > priority) {
-      // same name is already registered with a higher priority. skip registeration.
+    } else if (currentBackend.backend === backend) {
       return;
-    } else if (currentBackend.priority === priority) {
-      if (currentBackend.backend !== backend) {
-        throw new Error(`cannot register backend "${name}" using priority ${priority}`);
-      }
+    } else {
+      throw new Error(`backend "${name}" is already registered`);
     }
 
     if (priority >= 0) {
-      const i = backendsSortedByPriority.indexOf(name);
-      if (i !== -1) {
-        backendsSortedByPriority.splice(i, 1);
-      }
-
       for (let i = 0; i < backendsSortedByPriority.length; i++) {
         if (backends[backendsSortedByPriority[i]].priority <= priority) {
           backendsSortedByPriority.splice(i, 0, name);

@@ -11,7 +11,7 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     1,
     float,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("X", DataTypeImpl::GetTensorType<float>()),
     MaxpoolWithMask);
 
 }  // namespace contrib

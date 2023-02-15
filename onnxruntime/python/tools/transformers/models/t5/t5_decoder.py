@@ -7,23 +7,20 @@
 import logging
 import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import List, Union
 
 import numpy
-import onnx
 import torch
 from past_helper import PastKeyValuesHelper
 from t5_encoder import T5EncoderInputs
-from transformers import MT5Config, T5Config
+from transformers import T5Config
 
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
+from io_binding_helper import TypeHelper
+from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +34,7 @@ class T5DecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: Union[T5Config, MT5Config],
+        config: T5Config,
         decoder_start_token_id: int = None,
     ):
         super().__init__()
@@ -132,7 +129,7 @@ class T5DecoderInputs:
 
     @staticmethod
     def create_dummy(
-        config: Union[T5Config, MT5Config],
+        config: T5Config,
         batch_size: int,
         encode_sequence_length: int,
         past_decode_sequence_length: int,
@@ -158,10 +155,6 @@ class T5DecoderInputs:
         num_attention_heads: int = config.num_heads
         num_layers: int = config.num_layers
         vocab_size: int = config.vocab_size
-
-        # Do not use head_size = hidden_size / num_attention_heads here.
-        # For example, mt5-small, d_model=512 and num_heads=6
-        head_size: int = config.d_kv
 
         sequence_length: int = 1  # fixed for decoding
         decoder_input_ids = torch.randint(
@@ -194,13 +187,13 @@ class T5DecoderInputs:
                 batch_size,
                 num_attention_heads,
                 past_decode_sequence_length,
-                head_size,
+                int(hidden_size / num_attention_heads),
             ]
             cross_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
                 encode_sequence_length,
-                head_size,
+                int(hidden_size / num_attention_heads),
             ]
 
             past = []
@@ -279,13 +272,13 @@ class T5DecoderHelper:
         #    input_ids: (batch_size, sequence_length)
         #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, hidden_size/num_heads)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
 
         # Shape of output tensors:
         #    logits: (batch_size, sequence_length, vocab_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, head_size)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, hidden_size/num_heads)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
 
         input_names = ["input_ids"]
         input_names.append("encoder_attention_mask")
@@ -327,37 +320,24 @@ class T5DecoderHelper:
                     }
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            temp_onnx_model_path = os.path.join(tmp_dir_name, "decoder.onnx")
-            Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-            torch_onnx_export(
-                decoder,
-                args=tuple(input_list),
-                f=temp_onnx_model_path if use_external_data_format else onnx_model_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=12,
-                do_constant_folding=True,
-                use_external_data_format=use_external_data_format,
-                verbose=verbose,
-            )
-
-            if use_external_data_format:
-                model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
-                OnnxModel.save(
-                    model,
-                    onnx_model_path,
-                    save_as_external_data=True,
-                    all_tensors_to_one_file=True,
-                )
+        torch_onnx_export(
+            decoder,
+            args=tuple(input_list),
+            f=onnx_model_path,
+            export_params=True,
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+            opset_version=12,
+            do_constant_folding=True,
+            use_external_data_format=use_external_data_format,
+            verbose=verbose,
+        )
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5DecoderInputs):
         """Run inference of ONNX model."""
-        logger.debug("start onnxruntime_inference")
+        logger.debug(f"start onnxruntime_inference")
 
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy()),
@@ -434,8 +414,7 @@ class T5DecoderHelper:
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size}, encode_sequence_length={encode_sequence_length}, "
-                + f"past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
+                f"batch_size={batch_size} encode_sequence_length={encode_sequence_length}, past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
             )
 
         return max_diff_all

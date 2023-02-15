@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/providers/nuphar/common/nuphar_settings.h"
 #include <cassert>
 #include <memory>
 #include <vector>

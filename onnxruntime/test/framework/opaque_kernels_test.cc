@@ -15,7 +15,6 @@
 #include "gtest/gtest.h"
 
 #include "test/providers/provider_test_utils.h"
-#include "asserts.h"
 #include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
@@ -175,13 +174,13 @@ KernelDefBuilder ConstructSparseTensorDef() {
       .SetDomain(onnxruntime::kMLDomain)
       .SinceVersion(8)
       .Provider(onnxruntime::kCpuExecutionProvider)
-      .TypeConstraint("T1",
+      .TypeConstraint("sparse_values",
                       DataTypeImpl::GetTensorType<int64_t>())
-      .TypeConstraint("T2",
+      .TypeConstraint("sparse_indicies",
                       DataTypeImpl::GetTensorType<int64_t>())
-      .TypeConstraint("T3",
+      .TypeConstraint("sparse_shape",
                       DataTypeImpl::GetTensorType<int64_t>())
-      .TypeConstraint("T",
+      .TypeConstraint("sparse_rep",
                       DataTypeImpl::GetType<SparseTensorSample>());
   return def;
 }
@@ -192,9 +191,9 @@ KernelDefBuilder ConstructFetchSparseShape() {
       .SetDomain(onnxruntime::kMLDomain)
       .SinceVersion(8)
       .Provider(onnxruntime::kCpuExecutionProvider)
-      .TypeConstraint("T1",
+      .TypeConstraint("sparse_rep",
                       DataTypeImpl::GetType<SparseTensorSample>())
-      .TypeConstraint("T",
+      .TypeConstraint("sparse_tensor_shape",
                       DataTypeImpl::GetTensorType<int64_t>());
   return def;
 }
@@ -284,27 +283,17 @@ TEST_F(OpaqueTypeTests, RunModel) {
   // so we construct it here before the model
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
   InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
+  EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
   auto ops_schema = GetConstructSparseTensorSchema();
   auto shape_schema = GetFetchSparseShapeSchema();
   std::vector<OpSchema> schemas = {ops_schema, shape_schema};
-  ASSERT_STATUS_OK(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 8, 9));
+  EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 8, 9).IsOK());
   // Register our kernels here
   auto ctor_def = ConstructSparseTensorDef();
-  ASSERT_STATUS_OK(registry->RegisterCustomKernel(
-      ctor_def,
-      [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
-        out = std::make_unique<ConstructSparseTensor>(info);
-        return Status::OK();
-      }));
+  EXPECT_TRUE(registry->RegisterCustomKernel(ctor_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<ConstructSparseTensor>(info); return Status::OK(); }).IsOK());
   auto shape_def = ConstructFetchSparseShape();
-  ASSERT_STATUS_OK(registry->RegisterCustomKernel(
-      shape_def,
-      [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
-        out = std::make_unique<FetchSparseTensorShape>(info);
-        return Status::OK();
-      }));
+  EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<FetchSparseTensorShape>(info); return Status::OK(); }).IsOK());
 
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
@@ -359,15 +348,15 @@ TEST_F(OpaqueTypeTests, RunModel) {
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
 
-  ASSERT_STATUS_OK(graph.Resolve());
+  EXPECT_TRUE(graph.Resolve().IsOK());
 
   // Get a proto and load from it
   std::string serialized_model;
   auto model_proto = model.ToProto();
   EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
   std::stringstream sstr(serialized_model);
-  ASSERT_STATUS_OK(session_object.Load(sstr));
-  ASSERT_STATUS_OK(session_object.Initialize());
+  EXPECT_TRUE(session_object.Load(sstr).IsOK());
+  EXPECT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
 
@@ -401,12 +390,12 @@ TEST_F(OpaqueTypeTests, RunModel) {
   output_names.push_back("sparse_tensor_shape");
   std::vector<OrtValue> fetches;
 
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   // Should get the original shape back in the form of a tensor
   EXPECT_EQ(1u, rtensor.Shape().NumDimensions());
-  EXPECT_EQ(5, *rtensor.Data<int64_t>());
+  EXPECT_EQ(5, *rtensor.template Data<int64_t>());
 }
 
 }  // namespace test

@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -19,10 +18,10 @@ namespace utils {
  * @param keep_empty Whether to keep empty substrings.
  * @return The split substrings.
  */
-inline InlinedVector<std::string_view> SplitString(std::string_view string_to_split, std::string_view delimiter,
-                                                   bool keep_empty = false) {
+inline std::vector<std::string_view> SplitString(std::string_view string_to_split, std::string_view delimiter,
+                                                 bool keep_empty = false) {
   ORT_ENFORCE(!delimiter.empty(), "delimiter must not be empty");
-  InlinedVector<std::string_view> result{};
+  std::vector<std::string_view> result{};
   std::string_view::size_type segment_begin_pos = 0;
   while (segment_begin_pos != std::string_view::npos) {
     const std::string_view::size_type segment_end_pos = string_to_split.find(delimiter, segment_begin_pos);

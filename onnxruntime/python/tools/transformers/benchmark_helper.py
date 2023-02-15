@@ -4,24 +4,21 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import argparse
 import csv
 import logging
 import os
-import random
+import sys
+import time
 import timeit
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
-from time import sleep
-from typing import Any, Dict, List, Optional
 
 import coloredlogs
 import numpy
+import onnx
 import torch
-import transformers
 from packaging import version
-
-import onnxruntime
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +82,14 @@ def create_onnxruntime_session(
 ):
     session = None
     try:
-        sess_options = onnxruntime.SessionOptions()
+        from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+
+        sess_options = SessionOptions()
 
         if enable_all_optimization:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
         else:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+            sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
 
         if enable_profiling:
             sess_options.enable_profiling = True
@@ -132,9 +131,9 @@ def create_onnxruntime_session(
         if provider_options:
             providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
 
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
+        session = InferenceSession(onnx_model_path, sess_options, providers=providers)
     except:
-        logger.error("Exception", exc_info=True)
+        logger.error(f"Exception", exc_info=True)
 
     return session
 
@@ -157,6 +156,8 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    import onnxruntime
+
     if use_gpu:
         if provider == "dml":
             assert (
@@ -168,34 +169,38 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
                 "CUDAExecutionProvider" in onnxruntime.get_available_providers()
             ), "Please install onnxruntime-gpu package to test GPU inference."
 
+    import transformers
+
     logger.info(f"PyTorch Version:{torch.__version__}")
     logger.info(f"Transformers Version:{transformers.__version__}")
     logger.info(f"Onnxruntime Version:{onnxruntime.__version__}")
 
-    # Support three major versions of PyTorch and OnnxRuntime, and up to 9 months of transformers.
-    assert version.parse(torch.__version__) >= version.parse("1.10.0")
-    assert version.parse(transformers.__version__) >= version.parse("4.12.0")
-    assert version.parse(onnxruntime.__version__) >= version.parse("1.10.0")
+    # Support three major versions of PyTorch and OnnxRuntime, and up to 6 months of transformers.
+    from packaging import version
+
+    assert version.parse(torch.__version__) >= version.parse("1.5.0")
+    assert version.parse(transformers.__version__) >= version.parse("3.0.0")
+    assert version.parse(onnxruntime.__version__) >= version.parse("1.4.0")
 
 
-def get_latency_result(latency_list, batch_size):
-    latency_ms = sum(latency_list) / float(len(latency_list)) * 1000.0
-    latency_variance = numpy.var(latency_list, dtype=numpy.float64) * 1000.0
+def get_latency_result(runtimes, batch_size):
+    latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
+    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
 
     return {
-        "test_times": len(latency_list),
+        "test_times": len(runtimes),
         "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(latency_list, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(latency_list, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(latency_list, 99) * 1000.0),
+        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
+        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
+        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
 
 
 def output_details(results, csv_filename):
-    with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
+    with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = [
             "engine",
             "version",
@@ -229,7 +234,7 @@ def output_details(results, csv_filename):
 
 
 def output_summary(results, csv_filename, args):
-    with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
+    with open(csv_filename, mode="a", newline="") as csv_file:
         header_names = [
             "model_name",
             "inputs",
@@ -281,7 +286,9 @@ def output_summary(results, csv_filename, args):
 
 
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
-    with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
+    from transformers import __version__ as transformers_version
+
+    with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = ["model_filename", "datetime", "transformers", "torch"] + list(
             next(iter(model_fusion_statistics.values())).keys()
         )
@@ -289,7 +296,7 @@ def output_fusion_statistics(model_fusion_statistics, csv_filename):
         csv_writer.writeheader()
         for key in model_fusion_statistics.keys():
             model_fusion_statistics[key]["datetime"] = str(datetime.now())
-            model_fusion_statistics[key]["transformers"] = transformers.__version__
+            model_fusion_statistics[key]["transformers"] = transformers_version
             model_fusion_statistics[key]["torch"] = torch.__version__
             model_fusion_statistics[key]["model_filename"] = key
             csv_writer.writerow(model_fusion_statistics[key])
@@ -299,10 +306,10 @@ def output_fusion_statistics(model_fusion_statistics, csv_filename):
 def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size, warm_up_repeat=0):
     result = {}
     timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=warm_up_repeat)  # Dry run
-    latency_list = timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=repeat_times)
+    runtimes = timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": False})
-    result.update(get_latency_result(latency_list, batch_size))
+    result.update(get_latency_result(runtimes, batch_size))
     return result
 
 
@@ -344,30 +351,28 @@ def inference_ort_with_io_binding(
     if len(output_buffers) == 0:
         allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)
 
-    for i, ort_output_name in enumerate(ort_output_names):
+    for i in range(len(ort_output_names)):
         io_binding.bind_output(
-            ort_output_name,
+            ort_output_names[i],
             output_buffers[i].device.type,
             0,
             numpy.float32,
             ort_outputs[i].shape,
             output_buffers[i].data_ptr(),
         )
-
     timeit.repeat(
         lambda: ort_session.run_with_iobinding(io_binding),
         number=1,
         repeat=warm_up_repeat,
     )  # Dry run
-
-    latency_list = timeit.repeat(
+    runtimes = timeit.repeat(
         lambda: ort_session.run_with_iobinding(io_binding),
         number=1,
         repeat=repeat_times,
     )
     result.update(result_template)
     result.update({"io_binding": True})
-    result.update(get_latency_result(latency_list, batch_size))
+    result.update(get_latency_result(runtimes, batch_size))
     return result
 
 
@@ -380,7 +385,9 @@ def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
 
 
 def set_random_seed(seed=123):
-    """Set random seed manually to get deterministic results"""
+    """Set random seed manully to get deterministic results"""
+    import random
+
     random.seed(seed)
     numpy.random.seed(seed)
     torch.manual_seed(seed)
@@ -391,52 +398,17 @@ def set_random_seed(seed=123):
     # torch.backends.cudnn.deterministic = True
 
 
-def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
-    from py3nvml.py3nvml import (
-        NVMLError,
-        nvmlDeviceGetCount,
-        nvmlDeviceGetHandleByIndex,
-        nvmlDeviceGetMemoryInfo,
-        nvmlDeviceGetName,
-        nvmlInit,
-        nvmlShutdown,
-    )
-
-    try:
-        nvmlInit()
-        result = []
-        device_count = nvmlDeviceGetCount()
-        if not isinstance(device_count, int):
-            return None
-
-        for i in range(device_count):
-            info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
-            if isinstance(info, str):
-                return None
-            result.append(
-                {
-                    "id": i,
-                    "name": nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)),
-                    "total": info.total,
-                    "free": info.free,
-                    "used": info.used,
-                }
-            )
-        nvmlShutdown()
-        return result
-    except NVMLError as error:
-        print("Error fetching GPU information using nvml: %s", error)
-        return None
-
-
 def measure_memory(is_gpu, func):
+    import os
+    from time import sleep
+
+    import psutil
+
     class MemoryMonitor:
         def __init__(self, keep_measuring=True):
             self.keep_measuring = keep_measuring
 
         def measure_cpu_usage(self):
-            import psutil
-
             max_usage = 0
             while True:
                 max_usage = max(max_usage, psutil.Process(os.getpid()).memory_info().rss / 1024**2)
@@ -445,7 +417,7 @@ def measure_memory(is_gpu, func):
                     break
             return max_usage
 
-        def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+        def measure_gpu_usage(self):
             from py3nvml.py3nvml import (
                 NVMLError,
                 nvmlDeviceGetCount,
@@ -460,19 +432,12 @@ def measure_memory(is_gpu, func):
             gpu_name = []
             try:
                 nvmlInit()
-                device_count = nvmlDeviceGetCount()
-                if not isinstance(device_count, int):
-                    logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
-                    return None
-
-                max_gpu_usage = [0 for i in range(device_count)]
-                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(device_count)]
+                deviceCount = nvmlDeviceGetCount()
+                max_gpu_usage = [0 for i in range(deviceCount)]
+                gpu_name = [nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(i)) for i in range(deviceCount)]
                 while True:
-                    for i in range(device_count):
+                    for i in range(deviceCount):
                         info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
-                        if isinstance(info, str):
-                            logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
-                            return None
                         max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                     sleep(0.005)  # 5ms
                     if not self.keep_measuring:
@@ -484,56 +449,37 @@ def measure_memory(is_gpu, func):
                         "name": gpu_name[i],
                         "max_used_MB": max_gpu_usage[i],
                     }
-                    for i in range(device_count)
+                    for i in range(deviceCount)
                 ]
             except NVMLError as error:
-                logger.error("Error fetching GPU information using nvml: %s", error)
+                if not self.silent:
+                    self.logger.error("Error fetching GPU information using nvml: %s", error)
                 return None
 
     monitor = MemoryMonitor(False)
 
-    if is_gpu:
-        memory_before_test = monitor.measure_gpu_usage()
-        if memory_before_test is None:
-            return None
+    memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
 
-        with ThreadPoolExecutor() as executor:
-            monitor = MemoryMonitor()
-            mem_thread = executor.submit(monitor.measure_gpu_usage)
-            try:
-                fn_thread = executor.submit(func)
-                _ = fn_thread.result()
-            finally:
-                monitor.keep_measuring = False
-                max_usage = mem_thread.result()
-
-            if max_usage is None:
-                return None
-
-            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
-            if len(memory_before_test) >= 1 and len(max_usage) >= 1 and len(memory_before_test) == len(max_usage):
-                # When there are multiple GPUs, we will check the one with maximum usage.
-                max_used = 0
-                for i, memory_before in enumerate(memory_before_test):
-                    before = memory_before["max_used_MB"]
-                    after = max_usage[i]["max_used_MB"]
-                    used = after - before
-                    max_used = max(max_used, used)
-                return max_used
-        return None
-
-    # CPU memory
-    memory_before_test = monitor.measure_cpu_usage()
+    from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor() as executor:
         monitor = MemoryMonitor()
-        mem_thread = executor.submit(monitor.measure_cpu_usage)
+        mem_thread = executor.submit(monitor.measure_gpu_usage if is_gpu else monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)
-            _ = fn_thread.result()
+            result = fn_thread.result()
         finally:
             monitor.keep_measuring = False
             max_usage = mem_thread.result()
 
-        print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
-        return max_usage - memory_before_test
+        if is_gpu:
+            print(f"GPU memory usage: before={memory_before_test}  peak={max_usage}")
+            if len(memory_before_test) >= 1 and len(max_usage) >= 1:
+                before = memory_before_test[0]["max_used_MB"]
+                after = max_usage[0]["max_used_MB"]
+                return after - before
+            else:
+                return None
+        else:
+            print(f"CPU memory usage: before={memory_before_test:.1f} MB, peak={max_usage:.1f} MB")
+            return max_usage - memory_before_test

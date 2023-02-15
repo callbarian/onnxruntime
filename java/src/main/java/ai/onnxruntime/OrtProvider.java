@@ -13,6 +13,7 @@ public enum OrtProvider {
   CUDA("CUDAExecutionProvider"),
   DNNL("DnnlExecutionProvider"),
   OPEN_VINO("OpenVINOExecutionProvider"),
+  NUPHAR("NupharExecutionProvider"),
   VITIS_AI("VitisAIExecutionProvider"),
   TENSOR_RT("TensorrtExecutionProvider"),
   NNAPI("NnapiExecutionProvider"),
@@ -22,8 +23,7 @@ public enum OrtProvider {
   ACL("ACLExecutionProvider"),
   ARM_NN("ArmNNExecutionProvider"),
   ROCM("ROCMExecutionProvider"),
-  CORE_ML("CoreMLExecutionProvider"),
-  XNNPACK("XnnpackExecutionProvider");
+  CORE_ML("CoreMLExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 

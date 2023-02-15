@@ -1,6 +1,4 @@
 #!/bin/bash
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
 
 # This is for testing GPU final jar on Linux
 set -e -o -x

@@ -33,7 +33,7 @@ using namespace onnxruntime::internal_testing_ep;
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
-static Status CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSessionWrapper>& session,
+static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSessionWrapper>& session,
                           const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "mnist.onnx",  // arbitrary test model
                           bool enable_custom_ep = true,
                           const std::unordered_set<std::string>* override_supported_ops = nullptr) {
@@ -48,13 +48,12 @@ static Status CreateSession(const SessionOptions& so, std::unique_ptr<InferenceS
                                                                                 : &default_supported_ops;
 
   if (enable_custom_ep) {
-    ORT_RETURN_IF_ERROR(session->RegisterExecutionProvider(
+    ASSERT_STATUS_OK(session->RegisterExecutionProvider(
         std::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
   }
 
-  ORT_RETURN_IF_ERROR(session->Load(model_path));
-  ORT_RETURN_IF_ERROR(session->Initialize());
-  return Status::OK();
+  ASSERT_STATUS_OK(session->Load(model_path));
+  ASSERT_STATUS_OK(session->Initialize());
 }
 
 static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enabled) {
@@ -105,20 +104,20 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   SessionOptions so;
   so.optimized_model_filepath = ort_model_path;
 
-  ASSERT_STATUS_OK(CreateSession(so, session));
+  CreateSession(so, session);
   // this graph should include the original nodes that the custom EP will take at runtime
   auto num_nodes = session->GetGraph().NumberOfNodes();
 
   //
   // Second, load the ORT format model with just the CPU EP to make sure it can be executed. This tests that the
-  // fallback to the CPU EP works.
+  // fallback to the CPU EP kernel hashes works.
   //
   std::unique_ptr<InferenceSessionWrapper> session2;
 
   so.optimized_model_filepath.clear();
   bool enable_custom_ep = false;
 
-  ASSERT_STATUS_OK(CreateSession(so, session2, ort_model_path, enable_custom_ep));
+  CreateSession(so, session2, ort_model_path, enable_custom_ep);
   const auto& graph1 = session2->GetGraph();
   // model should have all the original nodes and we should be able to execute with the fallback to CPU EP
   ASSERT_EQ(graph1.NumberOfNodes(), num_nodes);
@@ -130,7 +129,7 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   // for the ORT format model.
   //
   enable_custom_ep = true;
-  ASSERT_STATUS_OK(CreateSession(so, session2, ort_model_path, enable_custom_ep));
+  CreateSession(so, session2, ort_model_path, enable_custom_ep);
   const auto& graph2 = session2->GetGraph();
   // model should be able to be loaded, and we should compile using custom ep. that will result in one node for the
   // custom EP (with Conv/Add/Relu/MaxPool), one for a reshape, and one for the fused MatMul+Add.
@@ -269,7 +268,7 @@ TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
                                                          DataLayout::NHWC),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator registration to allow sharing */)};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);
@@ -332,7 +331,7 @@ TEST(InternalTestingEP, TestLoadOrtModel) {
   std::unique_ptr<InferenceSessionWrapper> session;
   bool enable_custom_ep = true;
 
-  ASSERT_STATUS_OK(CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep));
+  CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep);
   ExecuteMnist(*session, enable_custom_ep);
 }
 
@@ -345,7 +344,7 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   std::unique_ptr<InferenceSessionWrapper> session;
   bool enable_custom_ep = true;
 
-  ASSERT_STATUS_OK(CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops));
+  CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops);
 
   const auto& graph = session->GetGraph();
   // Conv+Add gets fused by level 1 optimizer into single node. The 'Conv'/'Add'/'Relu' nodes should be compiled and
@@ -406,7 +405,7 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   std::unique_ptr<InferenceSessionWrapper> session;
   bool enable_custom_ep = true;
 
-  ASSERT_STATUS_OK(CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops));
+  CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops);
 
   const auto& graph = session->GetGraph();
   auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();

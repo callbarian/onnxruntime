@@ -25,10 +25,10 @@ GPUDataTransfer::GPUDataTransfer(cudaStream_t stream, bool do_copy_in_default_st
 
 GPUDataTransfer::~GPUDataTransfer() {
   if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyIn] != nullptr) {
-    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn])));
+    CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
   }
   if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyOut] != nullptr) {
-    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut])));
+    CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
   }
 }
 

@@ -262,19 +262,15 @@ class PlannerTest : public ::testing::Test {
         state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
-    const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
-    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
-      ASSERT_STATUS_OK(reg->Register(
+    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
+      auto st = reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
-                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                             out = std::make_unique<DummyOpKernel>(info);
-                             return Status::OK();
-                           })));
+                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
+      ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -305,7 +301,7 @@ class PlannerTest : public ::testing::Test {
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
     constexpr bool remove_initializers = false;
-    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, remove_initializers);
+    status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);

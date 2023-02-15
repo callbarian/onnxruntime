@@ -4,8 +4,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
-#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
@@ -20,11 +18,12 @@
 //       get the actually Android system version.
 //       If running on an actual Android system, this value will be ignored
 #ifndef ORT_NNAPI_MAX_SUPPORTED_API_LEVEL
-#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 31
+#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 30
 #endif
 
 namespace onnxruntime {
 
+using Shape = std::vector<uint32_t>;
 using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>;
 
 class GraphViewer;
@@ -36,8 +35,6 @@ class Path;
 struct NodeUnitIODef;
 
 namespace nnapi {
-
-using Shape = InlinedVector<uint32_t>;
 
 class IOpSupportChecker;
 struct OpSupportCheckParams;
@@ -146,9 +143,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 // Get the output shape of Flatten Op
 void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
-// Get the shape information from NodeArg
-Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name);
-
 // If a node is supported by NNAPI
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
@@ -162,12 +156,7 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);
 
 // Get string representation of a Shape
-std::string Shape2String(const Shape& shape);
-
-uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx);
-inline uint32_t ShapeSize(const Shape& shape) {
-  return ShapeSize(shape, 0, shape.size());
-}
+std::string Shape2String(const std::vector<uint32_t>& shape);
 
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer

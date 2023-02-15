@@ -23,7 +23,6 @@ namespace {
 template <typename T, typename TIndex>
 Status CallGatherGradImpl(
     cudaStream_t stream,
-    const cudaDeviceProp& prop,
     const CudaScratchBufferAllocator& allocator,
     int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
     const Tensor& dY, const Tensor& gathered_indices,
@@ -38,7 +37,6 @@ Status CallGatherGradImpl(
 
   GatherGradImpl(
       stream,
-      prop,
       allocator,
       reinterpret_cast<const CudaT*>(dY_data),
       indices_data,
@@ -54,7 +52,6 @@ Status CallGatherGradImpl(
 template <typename T>
 Status DispatchToGatherGradImplByTindex(
     cudaStream_t stream,
-    const cudaDeviceProp& prop,
     MLDataType tindex_data_type,
     const CudaScratchBufferAllocator& allocator,
     int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
@@ -62,29 +59,31 @@ Status DispatchToGatherGradImplByTindex(
     Tensor& dX) {
   if (utils::IsPrimitiveDataType<int32_t>(tindex_data_type)) {
     return CallGatherGradImpl<T, int32_t>(
-        stream, prop, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
+        stream, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   } else if (utils::IsPrimitiveDataType<int64_t>(tindex_data_type)) {
     return CallGatherGradImpl<T, int64_t>(
-        stream, prop, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
+        stream, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported TIndex type: ", tindex_data_type);
 }
 
-Status DispatchToGatherGradImpl(cudaStream_t stream, const cudaDeviceProp& prop, MLDataType t_data_type,
-                                MLDataType tindex_data_type, const CudaScratchBufferAllocator& allocator,
-                                int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
-                                const Tensor& dY, const Tensor& gathered_indices, Tensor& dX) {
+Status DispatchToGatherGradImpl(
+    cudaStream_t stream,
+    MLDataType t_data_type, MLDataType tindex_data_type,
+    const CudaScratchBufferAllocator& allocator,
+    int64_t num_gathered_per_index, int64_t gather_dimension_size, int64_t num_batches,
+    const Tensor& dY, const Tensor& gathered_indices,
+    Tensor& dX) {
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
-    return DispatchToGatherGradImplByTindex<float>(stream, prop, tindex_data_type, allocator, num_gathered_per_index,
-                                                   gather_dimension_size, num_batches, dY, gathered_indices, dX);
+    return DispatchToGatherGradImplByTindex<float>(
+        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
-    return DispatchToGatherGradImplByTindex<MLFloat16>(stream, prop, tindex_data_type, allocator,
-                                                       num_gathered_per_index, gather_dimension_size, num_batches, dY,
-                                                       gathered_indices, dX);
+    return DispatchToGatherGradImplByTindex<MLFloat16>(
+        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   } else if (utils::IsPrimitiveDataType<BFloat16>(t_data_type)) {
-    return DispatchToGatherGradImplByTindex<BFloat16>(stream, prop, tindex_data_type, allocator, num_gathered_per_index,
-                                                      gather_dimension_size, num_batches, dY, gathered_indices, dX);
+    return DispatchToGatherGradImplByTindex<BFloat16>(
+        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, dY, gathered_indices, dX);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);
@@ -114,7 +113,7 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t num_batches = X_shape.SizeToDimension(axis);
 
   return DispatchToGatherGradImpl(
-      Stream(), GetDeviceProp(), t_type, tindex_type, CudaScratchBufferAllocator{*this},
+      Stream(), t_type, tindex_type, CudaScratchBufferAllocator{*this},
       num_gathered_per_index, gather_dimension_size, num_batches,
       *dY, *gathered_indices, *dX);
 }

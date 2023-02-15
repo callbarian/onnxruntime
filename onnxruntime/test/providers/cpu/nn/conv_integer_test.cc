@@ -6,27 +6,26 @@
 
 namespace onnxruntime {
 namespace test {
-TEST(ConvIntegerTest, WithoutPadding_2D_u8u8) {
+TEST(ConvIntegerTest, WithoutPadding_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
                          {2, 3, 4,
                           5, 6, 7,
-                          8, 9, 10});
+						  8, 9, 10});
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
-                         {2, 2,
-                          2, 2});
+                         {1, 1,
+					      1, 1});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {1});
   std::vector<int64_t> y_dims{1, 1, 2, 2};
   test.AddOutput<int32_t>("y", y_dims,
                           {12, 16,
-                           24, 28});
+						   24, 28});
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithPadding_2D_u8u8) {
+TEST(ConvIntegerTest, WithPadding_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -35,21 +34,20 @@ TEST(ConvIntegerTest, WithPadding_2D_u8u8) {
                           8, 9, 10});
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
-                         {2, 2,
-                          2, 2});
+                         {1, 1,
+                          1, 1});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {1});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   std::vector<int64_t> y_dims{1, 1, 4, 4};
   test.AddOutput<int32_t>("y", y_dims,
                           {1, 3, 5, 3,
-                           5, 12, 16, 9,
+	                       5, 12, 16, 9,
                            11, 24, 28, 15,
-                           7, 15, 17, 9});
+	                       7, 15, 17, 9});
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
+TEST(ConvIntegerTest, WithGroup_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -64,14 +62,13 @@ TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
                           26, 27, 28});
   std::vector<int64_t> w_dims{3, 1, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
-                         {11, 12,
-                          12, 11,
-                          13, 14,
-                          14, 13,
-                          15, 16,
-                          16, 15});
+                         {1, 2,
+                          2, 1,
+                          3, 4,
+                          4, 3,
+                          5, 6,
+                          6, 5});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {10});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   test.AddAttribute("group", static_cast<int64_t>(3));
   std::vector<int64_t> y_dims{1, 3, 4, 4};
@@ -91,7 +88,7 @@ TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
+TEST(ConvIntegerTest, WithPadding_3D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -106,12 +103,11 @@ TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
                           26, 27, 28});
   std::vector<int64_t> w_dims{1, 1, 2, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
-                         {11, 11,
-                          11, 11,
-                          11, 11,
-                          11, 11});
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {10});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1, 1, 1});
   std::vector<int64_t> y_dims{1, 1, 4, 4, 4};
   test.AddOutput<int32_t>("y", y_dims,
@@ -134,7 +130,7 @@ TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
   test.Run();
 }
 
-TEST(ConvIntegerTest, Pointwise_2D_u8u8) {
+TEST(ConvIntegerTest, Pointwise_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -142,18 +138,17 @@ TEST(ConvIntegerTest, Pointwise_2D_u8u8) {
                           5, 6, 7,
                           8, 9, 10});
   std::vector<int64_t> w_dims{1, 1, 1, 1};
-  test.AddInput<uint8_t>("w", w_dims, {5});
+  test.AddInput<uint8_t>("w", w_dims, {4});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {1});
   std::vector<int64_t> y_dims{1, 1, 3, 3};
   test.AddOutput<int32_t>("y", y_dims,
                           {4, 8, 12,
-                           16, 20, 24,
-                           28, 32, 36});
+	                       16, 20, 24,
+	                       28, 32, 36});
   test.Run();
 }
 
-TEST(ConvIntegerTest, Pointwise_3D_u8u8) {
+TEST(ConvIntegerTest, Pointwise_3D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 3, 3, 3};
   test.AddInput<uint8_t>("x", x_dims,
@@ -167,24 +162,23 @@ TEST(ConvIntegerTest, Pointwise_3D_u8u8) {
                           23, 24, 25,
                           26, 27, 28});
   std::vector<int64_t> w_dims{1, 1, 1, 1, 1};
-  test.AddInput<uint8_t>("w", w_dims, {5});
+  test.AddInput<uint8_t>("w", w_dims, {4});
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
-  test.AddInput<uint8_t>("w_zero_point", {}, {1});
   std::vector<int64_t> y_dims{1, 1, 3, 3, 3};
   test.AddOutput<int32_t>("y", y_dims,
                           {4, 8, 12,
-                           16, 20, 24,
-                           28, 32, 36,
+	                       16, 20, 24,
+	                       28, 32, 36,
                            40, 44, 48,
-                           52, 56, 60,
-                           64, 68, 72,
+	                       52, 56, 60,
+	                       64, 68, 72,
                            76, 80, 84,
-                           88, 92, 96,
-                           100, 104, 108});
+	                       88, 92, 96,
+	                       100, 104, 108});
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithStride2_2D_u8u8) {
+TEST(ConvIntegerTest, WithStride2_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
   test.AddInput<uint8_t>("x", x_dims,
@@ -197,24 +191,23 @@ TEST(ConvIntegerTest, WithStride2_2D_u8u8) {
                           70, 71, 72, 73, 74, 75, 76});
   std::vector<int64_t> w_dims{1, 1, 3, 3};
   test.AddInput<uint8_t>("w", w_dims,
-                         {11, 12, 11,
-                          12, 13, 12,
-                          11, 12, 11});
+                         {1, 2, 1,
+                          2, 3, 2,
+                          1, 2, 1});
   test.AddInput<uint8_t>("x_zero_point", {}, {10});
-  test.AddInput<uint8_t>("w_zero_point", {}, {10});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   test.AddAttribute<std::vector<int64_t>>("strides", {2, 2});
   std::vector<int64_t> y_dims{1, 1, 4, 4};
   test.AddOutput<int32_t>("y", y_dims,
                           {33, 62, 84, 75,
-                           224, 330, 360, 282,
+	                       224, 330, 360, 282,
                            444, 630, 660, 502,
-                           453, 642, 664, 495});
+	                       453, 642, 664, 495});
   // Exercise the (stride_w = 2) path inside Math::Im2col.
   test.Run();
 }
 
-TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
+TEST(ConvIntegerTest, WithStride3_2D) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
   test.AddInput<uint8_t>("x", x_dims,
@@ -227,17 +220,16 @@ TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
                           70, 71, 72, 73, 74, 75, 76});
   std::vector<int64_t> w_dims{1, 1, 3, 3};
   test.AddInput<uint8_t>("w", w_dims,
-                         {11, 12, 11,
-                          12, 13, 12,
-                          11, 12, 11});
+                         {1, 2, 1,
+                          2, 3, 2,
+                          1, 2, 1});
   test.AddInput<uint8_t>("x_zero_point", {}, {10});
-  test.AddInput<uint8_t>("w_zero_point", {}, {10});
   test.AddAttribute<std::vector<int64_t>>("pads", {2, 2, 1, 1});
   test.AddAttribute<std::vector<int64_t>>("strides", {3, 3});
   std::vector<int64_t> y_dims{1, 1, 3, 3};
   test.AddOutput<int32_t>("y", y_dims,
                           {0, 8, 20,
-                           80, 330, 375,
+	                       80, 330, 375,
                            200, 780, 825});
   // Exercise the (stride_w > 2) path inside Math::Im2col.
   test.Run();

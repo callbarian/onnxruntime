@@ -11,11 +11,9 @@ import {registerBackend} from 'onnxruntime-common';
 
 if (!BUILD_DEFS.DISABLE_WEBGL) {
   const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
-  registerBackend('webgl', onnxjsBackend, -10);
+  registerBackend('webgl', onnxjsBackend, -1);
 }
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
-  registerBackend('cpu', wasmBackend, 10);
-  registerBackend('wasm', wasmBackend, 10);
-  registerBackend('xnnpack', wasmBackend, 9);
+  registerBackend('wasm', wasmBackend, 0);
 }

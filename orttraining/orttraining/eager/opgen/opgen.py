@@ -3,14 +3,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import argparse
-import sys
-import types
-from importlib.machinery import SourceFileLoader
-
-from opgen.generator import ORTGen
+from opgen.writer import SourceWriter as SourceWriter
 from opgen.parser import cpp_create_from_file as CPPParser
-from opgen.writer import SourceWriter
+import sys
+import os
+from opgen.generator import ORTGen as ORTGen
+from importlib.machinery import SourceFileLoader
+import argparse
 
 parser = argparse.ArgumentParser(description="Generate ORT ATen operations")
 parser.add_argument(
@@ -23,16 +22,9 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-loader = SourceFileLoader("", args.ops_module)
-ops_module = types.ModuleType(loader.name)
-loader.exec_module(ops_module)
+ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()
 
-ortgen = ORTGen(
-    ops_module.ops,
-    type_promotion_ops=ops_module.type_promotion_ops,
-    custom_ops=args.custom_ops,
-    aten_output_type=ops_module.aten_output_type,
-)
+ortgen = ORTGen(ops_module.ops, type_promotion_ops=ops_module.type_promotion_ops, custom_ops=args.custom_ops)
 
 regdecs_path = args.header_file
 print(f"INFO: Using RegistrationDeclarations from: {regdecs_path}")

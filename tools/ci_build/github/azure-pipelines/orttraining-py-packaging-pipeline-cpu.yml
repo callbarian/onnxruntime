@@ -2,20 +2,12 @@ trigger: none
 
 variables:
   - name: isMain
-    value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/main') }}
+    value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/master') }}
   - name: finalStorage
     ${{ if eq(variables['isMain'], 'true') }}:
       value: '--final_storage'
     ${{ else }}:
       value: ''
-
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 stages:
 - stage: Python_Packaging
@@ -26,6 +18,9 @@ stages:
       workspace:
         clean: all
       pool: Linux-CPU
+
+      variables:
+        DockerFile: 'Dockerfile.manylinux2014_cpu'
 
       strategy:
         matrix:
@@ -53,7 +48,7 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)

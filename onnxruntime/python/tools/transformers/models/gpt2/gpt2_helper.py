@@ -10,13 +10,11 @@ import pickle
 import random
 import shutil
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import numpy
-import onnx
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
@@ -24,6 +22,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
+from fusion_utils import FusionUtils
 from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
@@ -456,47 +455,18 @@ class Gpt2Helper:
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        if use_external_data_format:
-            # We let PyTorch export onnx to a temp directory first, then convert external data to one file.
-            with tempfile.TemporaryDirectory() as tmp_dir_name:
-                temp_onnx_model_path = os.path.join(tmp_dir_name, "gpt2.onnx")
-                Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-
-                torch_onnx_export(
-                    model,
-                    args=tuple(input_list),
-                    f=temp_onnx_model_path,
-                    export_params=True,
-                    input_names=input_names,
-                    output_names=output_names,
-                    dynamic_axes=dynamic_axes,
-                    opset_version=11,
-                    do_constant_folding=True,
-                    use_external_data_format=True,
-                    verbose=verbose,
-                )
-
-                model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
-                OnnxModel.save(
-                    model,
-                    onnx_model_path,
-                    save_as_external_data=True,
-                    all_tensors_to_one_file=True,
-                )
-        else:
-            torch_onnx_export(
-                model,
-                args=tuple(input_list),
-                f=onnx_model_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=11,
-                do_constant_folding=True,
-                use_external_data_format=False,
-                verbose=verbose,
-            )
+        torch_onnx_export(
+            model,
+            args=tuple(input_list),
+            f=onnx_model_path,
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+            opset_version=11,
+            do_constant_folding=True,
+            use_external_data_format=use_external_data_format,
+            verbose=verbose,
+        )
 
     @staticmethod
     def optimize_onnx(
@@ -597,6 +567,10 @@ class Gpt2Helper:
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
+
+        fusion_utils = FusionUtils(onnx_model)
+        fusion_utils.remove_cascaded_cast_nodes()
+        fusion_utils.remove_useless_cast_nodes()
 
         return parameters
 

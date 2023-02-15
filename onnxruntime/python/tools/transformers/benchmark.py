@@ -837,7 +837,7 @@ def main():
         model_fusion_statistics = {}
         if enable_onnxruntime:
             try:
-                use_raw_attention_mask = not args.use_mask_index
+                use_raw_attention_mask = True
                 results += run_onnxruntime(
                     args.use_gpu,
                     args.provider,

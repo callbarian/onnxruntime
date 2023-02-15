@@ -10,6 +10,7 @@ import sys
 from setuptools import setup
 from torch.utils import cpp_extension
 
+
 # TODO: Implement a cleaner way to auto-generate torch_gpu_allocator.cc
 use_rocm = True if os.environ["ONNXRUNTIME_ROCM_VERSION"] else False
 gpu_identifier = "hip" if use_rocm else "cuda"
@@ -23,18 +24,8 @@ with fileinput.FileInput(filename, inplace=True) as file:
             line = line.replace("___gpu_allocator_header___", gpu_allocator_header)
         sys.stdout.write(line)
 
-extra_compile_args = {"cxx": ["-O3"]}
-if not use_rocm:
-    nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
-    if nvcc_extra_args:
-        extra_compile_args.update({"nvcc": nvcc_extra_args.split(",")})
-
 setup(
     name="torch_gpu_allocator",
-    ext_modules=[
-        cpp_extension.CUDAExtension(
-            name="torch_gpu_allocator", sources=[filename], extra_compile_args=extra_compile_args
-        )
-    ],
+    ext_modules=[cpp_extension.CUDAExtension(name="torch_gpu_allocator", sources=[filename])],
     cmdclass={"build_ext": cpp_extension.BuildExtension},
 )

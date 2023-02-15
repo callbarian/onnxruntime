@@ -44,7 +44,7 @@ namespace Dml
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -54,7 +54,7 @@ namespace Dml
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix
@@ -62,7 +62,7 @@ namespace Dml
 
     bool IsNodeSupportedByDml(
         const onnxruntime::Node& node,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::KernelRegistry& registry,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap
     );

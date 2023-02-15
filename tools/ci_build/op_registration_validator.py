@@ -20,11 +20,10 @@ log = get_logger("op_registration_validator")
 deprecated_ops = {
     "kOnnxDomain:Scatter": 11,
     "kOnnxDomain:Upsample": 10,
-    # LayerNormalization, MeanVarianceNormalization and ThresholdedRelu were in contrib ops and incorrectly registered
-    # using the kOnnxDomain. They became official ONNX operators later and are registered there now. That leaves
+    # MeanVarianceNormalization and ThresholdedRelu were in contrib ops and incorrectly registered using
+    # kOnnxDomain. They became official ONNX operators later and are registered there now. That leaves
     # entries in the contrib ops registrations with end versions for when the contrib op was 'deprecated'
     # and became an official op.
-    "kOnnxDomain:LayerNormalization": 17,
     "kOnnxDomain:MeanVarianceNormalization": 9,
     "kOnnxDomain:ThresholdedRelu": 10,
 }

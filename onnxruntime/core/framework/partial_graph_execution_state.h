@@ -26,9 +26,8 @@ struct PartialGraphExecutionState {
   size_t GetProgramCounterStart() { return program_counter_start_; }
   size_t GetProgramCounterEnd() { return program_counter_end_; }
 
-  ExecutionFrame& GetExecutionFrame(gsl::span<const int> feed_mlvalue_idxs,
-                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs, 
-                                    gsl::span<const OrtValue> fetches,
+  ExecutionFrame& GetExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                                    const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                     const SessionState& session_state) {
     if (execution_frame_ == nullptr) {

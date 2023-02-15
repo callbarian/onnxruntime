@@ -2,14 +2,13 @@
 # Licensed under the MIT License.
 
 import argparse
-import contextlib
 import os
 import sys
 import typing
 
 # the import of FbsTypeInfo sets up the path so we can import ort_flatbuffers_py
-from util.ort_format_model.types import FbsTypeInfo  # isort:skip
-import ort_flatbuffers_py.fbs as fbs  # isort:skip
+import ort_flatbuffers_py.fbs as fbs
+from util.ort_format_model.types import FbsTypeInfo
 
 
 class OrtFormatModelDumper:
@@ -24,8 +23,7 @@ class OrtFormatModelDumper:
         self._buffer = bytearray(self._file)
         if not fbs.InferenceSession.InferenceSession.InferenceSessionBufferHasIdentifier(self._buffer, 0):
             raise RuntimeError("File does not appear to be a valid ORT format model: '{}'".format(model_path))
-        self._inference_session = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0)
-        self._model = self._inference_session.Model()
+        self._model = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0).Model()
 
     def _dump_initializers(self, graph: fbs.Graph):
         print("Initializers:")
@@ -74,13 +72,12 @@ class OrtFormatModelDumper:
     def _dump_node(self, node: fbs.Node):
         optype = node.OpType().decode()
         domain = node.Domain().decode() or "ai.onnx"  # empty domain defaults to ai.onnx
-        since_version = node.SinceVersion()
 
         inputs = [node.Inputs(i).decode() for i in range(0, node.InputsLength())]
         outputs = [node.Outputs(i).decode() for i in range(0, node.OutputsLength())]
         print(
-            f"{node.Index()}:{node.Name().decode()}({domain}:{optype}:{since_version}) "
-            f'inputs=[{",".join(inputs)}] outputs=[{",".join(outputs)}]'
+            f"{node.Index()}:{node.Name().decode()}({domain}:{optype}) "
+            f'inputs=[{",".join(inputs)} outputs=[{",".join(outputs)}]'
         )
 
     def _dump_graph(self, graph: fbs.Graph):
@@ -113,12 +110,12 @@ class OrtFormatModelDumper:
                         print(f"## End Subgraph {k} ##")
 
     def dump(self, output: typing.IO):
-        with contextlib.redirect_stdout(output):
-            print(f"ORT format version: {self._inference_session.OrtVersion().decode()}")
-            print("--------")
+        graph = self._model.Graph()
 
-            graph = self._model.Graph()
-            self._dump_graph(graph)
+        original_stdout = sys.stdout
+        sys.stdout = output
+        self._dump_graph(graph)
+        sys.stdout = original_stdout
 
 
 def parse_args():

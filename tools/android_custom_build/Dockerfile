@@ -68,6 +68,6 @@ WORKDIR /workspace
 
 # get ORT repo
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH_OR_TAG=main
+ARG ONNXRUNTIME_BRANCH_OR_TAG=master
 RUN git clone --single-branch --branch=${ONNXRUNTIME_BRANCH_OR_TAG} --recurse-submodules ${ONNXRUNTIME_REPO} \
   /workspace/onnxruntime

@@ -31,11 +31,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
-    // If the node is not supported in the CPU EP, skip it
-    if (node->GetExecutionProviderType() != kCpuExecutionProvider) {
-      continue;
-    }
-
     // Only QLinearConv needs to be handled explicitly. The rest will be transformed if needed during transpose
     // optimization.
     if (node->OpType() == "QLinearConv") {
@@ -66,7 +61,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
 
       if (domain != kMSDomain) {
-        SwapNodeOpTypeDomainAndSinceVersion(*api_graph, *node, "QLinearConv", kMSDomain, 1);
+        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", kMSDomain);
       }
 
       modified = true;

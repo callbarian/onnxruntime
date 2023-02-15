@@ -4,7 +4,6 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -100,49 +99,21 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {3, 0},
        {}});
 
-  test_cases.push_back(
-      {"test 3D batch",
-       {3, 1, 3},
-       {3, 3, 2},
-       {3, 1, 2},
-       {
-           // clang-format off
-            10,  13,
-           100, 112,
-           298, 319,
-           // clang-format on
-       }});
-
-  test_cases.push_back(
-      {"test 4D batch",
-       {2, 2, 1, 3},
-       {2, 2, 3, 2},
-       {2, 2, 1, 2},
-       {
-           // clang-format off
-            10,  13,
-           100, 112,
-           298, 319,
-           604, 634,
-           // clang-format on
-       }});
-
   return test_cases;
 }
 
 template <typename T>
 void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
+  std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
-    SCOPED_TRACE("test case: " + t.name);
-
     OpTester test("MatMul", opset_version);
 
     int64_t size0 = TensorShape::FromExistingBuffer(t.input0_dims).SizeHelper(0, t.input0_dims.size());
-    std::vector<T> input0_vals = ValueRange<T>(size0);
+    std::vector<T> input0_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
     test.AddInput<T>("A", t.input0_dims, input0_vals, is_a_constant);
 
     int64_t size1 = TensorShape::FromExistingBuffer(t.input1_dims).SizeHelper(0, t.input1_dims.size());
-    std::vector<T> input1_vals = ValueRange<T>(size1);
+    std::vector<T> input1_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size1);
     test.AddInput<T>("B", t.input1_dims, input1_vals, is_b_constant);
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
@@ -150,7 +121,7 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
     // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
     // Disable TensorRT because of unsupported data type
     std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-    if (t.name == "test 2D empty input") {
+    if (is_b_constant) {
       // NNAPI: currently fails for the "test 2D empty input" case
       excluded_providers.insert(kNnapiExecutionProvider);
     }
@@ -165,6 +136,7 @@ void RunMatMulTest(int32_t opset_version) {
 
 TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, false);
+  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
@@ -218,7 +190,7 @@ TEST(MathOpTest, MatMul_Float16) {
   test.AddInput<MLFloat16>("A", {2, 4}, f_A);
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: fp16 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
 }
 #endif
 
@@ -241,7 +213,7 @@ TEST(MathOpTest, MatMul_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
+#endif 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif

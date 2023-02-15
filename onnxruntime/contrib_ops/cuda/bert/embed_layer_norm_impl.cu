@@ -85,11 +85,7 @@ __global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_
   }
 }
 
-inline Status ComputeMaskIndex(cudaStream_t stream,
-                             const int sequence_length,
-                             const int batch_size,
-                             const int* mask,
-                             int* mask_index) {
+inline bool ComputeMaskIndex(cudaStream_t stream, const int sequence_length, const int batch_size, const int* mask, int* mask_index) {
   // Mask idx is of length batch_size and assumes the valid region is contiguous starting
   // from the beginning of the sequence
 
@@ -104,7 +100,7 @@ inline Status ComputeMaskIndex(cudaStream_t stream,
     MaskIndexKernel<256><<<batch_size, 256, 0, stream>>>(sequence_length, mask, mask_index);
   }
 
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <typename T, unsigned TPB>
@@ -172,7 +168,7 @@ __global__ void EmbedLayerNormKernel(
 }
 
 template <typename T>
-Status EmbedSkipLayerNorm(
+bool EmbedSkipLayerNorm(
     cudaStream_t stream, int hidden_size, int batch_size, int sequence_length,
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
@@ -182,14 +178,12 @@ Status EmbedSkipLayerNorm(
   const dim3 block(tpb, 1, 1);
 
   EmbedLayerNormKernel<T, tpb>
-      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma,
-                                   word_embedding, position_embedding, segment_embedding,
-                                   epsilon, output, embedding_sum, position_ids);
+      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, epsilon, output, embedding_sum, position_ids);
 
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
 
-Status LaunchEmbedLayerNormKernel(
+bool LaunchEmbedLayerNormKernel(
     cudaStream_t stream,
     void* output,
     void* mask_index,
@@ -209,10 +203,10 @@ Status LaunchEmbedLayerNormKernel(
     void* embedding_sum,
     const int* position_ids) {
   if (nullptr == input_mask) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
-  } else {
-    ORT_RETURN_IF_ERROR(
-      ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index)));
+    if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream)))
+      return false;
+  } else if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
+    return false;
   }
 
   if (element_size == 2) {

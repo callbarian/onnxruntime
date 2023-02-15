@@ -33,8 +33,8 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
   ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention_));
 
-  input_requires_grads_ = info.GetAttrsOrDefault(
-      "input_requires_grads", std::vector<int64_t>(input_convention_.size(), 0));
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_requires_grads", input_requires_grads_));
+  ORT_ENFORCE(input_requires_grads_.size() == input_convention_.size());
 
   // Input tensors.
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
@@ -79,6 +79,7 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
 
   // Output tensors.
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_requires_grads", output_tensor_requires_grads_));
 
   CreateConstArgs();
   CreateArgPositions();
@@ -98,6 +99,7 @@ void PythonOpBase::RunForward(OpKernelContext* context,
   // Constant arguments are created in ctor.
   std::vector<OrtValue> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Invoke Python calls.
+  std::string err;
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
       input_requires_grads_,
@@ -241,7 +243,9 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) {
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
-  auto args = CreateOrtValueArgs(context, 1, context->InputCount() - 1);
+  // Todo (pengwa): this is fragile once we added more inputs, re-visist this
+  // for more robustness.
+  auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");

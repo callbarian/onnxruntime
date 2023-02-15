@@ -21,8 +21,7 @@ class TrainingAgent {
                          const std::vector<std::string>& fw_feed_names,
                          const std::vector<OrtDevice>& fw_outputs_device_info,
                          const std::vector<std::string>& bw_fetches_names,
-                         const std::vector<OrtDevice>& bw_outputs_device_info,
-                         int local_rank = 0);
+                         const std::vector<OrtDevice>& bw_outputs_device_info);
   ~TrainingAgent();
   // For ORTModule.forward()
   common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
@@ -34,7 +33,7 @@ class TrainingAgent {
 
   common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                          PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
-                         const OrtValueCachePtr& cache, int32_t partial_graph_index)
+                         const OrtValueCachePtr& cache)
       ORT_MUST_USE_RESULT;
 
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
@@ -50,10 +49,6 @@ class TrainingAgent {
   std::unique_ptr<FeedsFetchesManager> bw_feeds_fetches_manager_;
   size_t fw_program_counter_end_;
   size_t bw_program_counter_end_;
-
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  size_t profile_step_{0};
-#endif
 };
 
 }  // namespace training

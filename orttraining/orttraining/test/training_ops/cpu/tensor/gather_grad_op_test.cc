@@ -236,10 +236,6 @@ TEST(GatherGradOpTest, ConsistentOutput) {
 TEST(GatherGradOpTest, ConsistentOutputFewDistinctIndices) {
   RunGatherGradConsistentOutputTest(0, {2}, {1024 * 1024});
 }
-
-TEST(GatherGradOpTest, LargeGatherElementsPerIndex) {
-  RunGatherGradConsistentOutputTest(0, {8, 256, 196, 192}, {4});
-}
 #endif
 
 }  // namespace test

@@ -3,17 +3,11 @@
 
 #include "optimizer_api.h"
 #include "optimizer_utils.h"
-
-#include <algorithm>
 #include <deque>
-#include <iterator>
-#include <optional>
-
-#include "core/framework/execution_provider.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
-#include "core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;
@@ -124,8 +118,7 @@ class ApiGraph final : public api::GraphRef {
                                         size_t num_outputs = 1, std::string_view domain = "") override;
 
   std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                         std::string_view domain = "",
-                                         std::optional<int> since_version = std::nullopt) override;
+                                         std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -251,13 +244,11 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 
 // <ApiTensor>
 std::vector<int64_t> ApiTensor::Shape() const {
-  TensorShape shape = utils::GetTensorShapeFromTensorProto(tensor_proto_);
-  const auto dims = shape.GetDims();
-  return std::vector<int64_t>{dims.cbegin(), dims.cend()};
+  return utils::GetTensorShapeFromTensorProto(tensor_proto_);
 }
 
 size_t ApiTensor::NumElements() const {
-  int64_t size = utils::GetTensorShapeFromTensorProto(tensor_proto_).Size();
+  int64_t size = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto_)).Size();
   ORT_ENFORCE(size >= 0, "Failed to get size of TensorProto");
   return gsl::narrow_cast<size_t>(size);
 }
@@ -271,11 +262,11 @@ std::vector<uint8_t> ApiTensor::Data() const {
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
-  onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
+  auto tensor = onnxruntime::Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
-                                                tensor_proto_, tensor));
-  size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
-  const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
+                                                tensor_proto_, *tensor));
+  size_t num_bytes = gsl::narrow_cast<size_t>(tensor->SizeInBytes());
+  const uint8_t* data = static_cast<const uint8_t*>(tensor->DataRaw());
   return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
@@ -524,7 +515,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(*tensor_proto);
   TensorShape tensor_shape{tensor_shape_dims};
-  Tensor in_tensor(tensor_dtype, tensor_shape, cpu_allocator_);
+  std::unique_ptr<Tensor> in_tensor = Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
 
   std::vector<int64_t> new_tensor_shape_dims;
   std::vector<size_t> permutations;
@@ -537,12 +528,13 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   }
 
   TensorShape new_tensor_shape(new_tensor_shape_dims);
-  Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
+
+  std::unique_ptr<Tensor> out_tensor = Tensor::Create(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
-                                                *tensor_proto, in_tensor));
+                                                *tensor_proto, *in_tensor));
 
-  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, *in_tensor, *out_tensor));
 
   auto& node_arg = *graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -552,7 +544,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
 
   node_arg.SetShape(new_shape);
 
-  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str);
+  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(*out_tensor, name_str);
   graph_.RemoveInitializedTensor(name_str);
   graph_.AddInitializedTensor(new_tensor_proto);
 }
@@ -649,56 +641,40 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   return node;
 }
 
-static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
-    std::string_view domain, std::string_view op_type, int opset_version) {
-  auto compare_ignoring_since_version = [](const OpIdentifierWithStringViews& a, const OpIdentifierWithStringViews& b) {
-    if (a.domain == b.domain) {
-      return a.op_type < b.op_type;
-    }
-    return a.domain < b.domain;
-  };
-
-  const auto [range_begin, range_end] =
-      std::equal_range(kLayoutTransformationPotentiallyAddedOps.begin(),
-                       kLayoutTransformationPotentiallyAddedOps.end(),
-                       OpIdentifierWithStringViews{domain, op_type, 0},
-                       compare_ignoring_since_version);
-
-  // versions are in increasing order
-  // search backwards for largest since version <= opset_version
-  const auto range_rbegin = std::make_reverse_iterator(range_end),
-             range_rend = std::make_reverse_iterator(range_begin);
-
-  const auto result =
-      std::find_if(range_rbegin, range_rend,
-                   [&opset_version](const OpIdentifierWithStringViews& a) {
-                     return a.since_version <= opset_version;
-                   });
-
-  if (result != range_rend) {
-    return result->since_version;
-  }
-
-  return std::nullopt;
-}
+// This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
+// This is needed in minimal build since opschema is not available.
+// The versions MUST be sorted due to how the model opset is matched with the most recent operator version.
+static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
+    {"Squeeze", {1, 11, 13}},
+    {"Unsqueeze", {1, 11, 13}},
+    {"Gather", {1, 11, 13}},
+    {"Transpose", {1, 13}},
+    {"Identity", {1, 13, 14, 16}},
+};
 
 // Based on the opset version imported for this model, returns the since version for the node.
 static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map) {
-  // TODO do we need this check? we will also check kLayoutTransformationPotentiallyAddedOps
+  int since_version = -1;
   ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
               domain, " provided for op: ", op_type);
 
-  const auto opset_import_iter = domain_to_version_map.find(std::string(domain));
-  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), domain, " domain not found in opset imports.");
+  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
+  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), "Onnx domain not found in opset imports.");
 
-  const int opset_version = opset_import_iter->second;
-  const auto since_version = GetLayoutTransformationPotentiallyAddedOpSinceVersion(domain, op_type, opset_version);
-  ORT_ENFORCE(since_version.has_value(),
+  int opset_version = opset_import_iter->second;
+  auto iter = onnx_ops_available_versions.find(std::string(op_type));
+  ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
               "Transpose Optimizer is adding an unexpected node: ", op_type,
-              "An entry for this node should be added in kLayoutTransformationPotentiallyAddedOps.");
+              "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
 
-  return *since_version;
+  for (auto version : iter->second) {
+    if (version <= opset_version) {
+      since_version = version;
+    }
+  }
+
+  return since_version;
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
@@ -712,10 +688,9 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-                                                 std::string_view domain, std::optional<int> since_version) {
-  const int new_node_since_version = since_version.has_value() ? *since_version : source_node.SinceVersion();
+                                                 std::string_view domain) {
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, new_node_since_version,
+                                source_node.Outputs().size(), domain, source_node.SinceVersion(),
                                 source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);

@@ -215,7 +215,9 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                        const IKernelLookup& /*kernel_lookup*/) const {
+                                        const std::vector<const KernelRegistry*>& kernel_registries) const {
+  ORT_UNUSED_PARAMETER(kernel_registries);
+
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Dump model Proto to file to pass it to pyxir

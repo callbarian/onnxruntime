@@ -36,18 +36,16 @@ class DnnlNodeArg {
 
 class DnnlTensor {
  public:
-  DnnlTensor(const NodeArg* arg, bool isConstantInitializer = false);
+  DnnlTensor(const NodeArg* arg);
   DnnlTensor(std::string name);
   DnnlTensor() = default;
   std::string Name() const;
   dnnl::memory::dims Dim() const;
   dnnl::memory::data_type Type() const;
   dnnl::memory::format_tag Format();
-  // Check whether the tensor is dynamic, e.g. contains unspecified dimension
+  //check whether the tensor is dynamic, e.g. contains unspecified dimension
   bool IsDynamic();
-  // Check whether the tensor is constant initializer
-  bool IsConstant();
-  // Check whether the tensor exsits for optional input output
+  //check whether the tensor exsits for optional input output
   bool Exists();
   std::vector<DnnlNodeArg>& GetConsumers() { return consumers_; };
   DnnlNodeArg& GetProducer() { return producer_; };
@@ -66,7 +64,6 @@ class DnnlTensor {
   //a tensor can have no producer (input.initializer) or no consumer (output for subgraph)
   DnnlNodeArg producer_;
   std::vector<DnnlNodeArg> consumers_;
-  bool isConstant_;
 };
 
 class DnnlNode {

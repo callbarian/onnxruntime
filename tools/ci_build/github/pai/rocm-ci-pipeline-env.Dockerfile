@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:rocm5.1.1_ubuntu20.04_py3.7_pytorch_1.10.0
 
 WORKDIR /stage
 
@@ -35,10 +35,7 @@ RUN pip install \
       scikit-learn \
       sklearn \
       tokenizers \
-      sentencepiece \
-      dill==0.3.4 \
-      wget \
-      pytorch_lightning==1.6.0
+      sentencepiece
 
 RUN pip install torch-ort --no-dependencies
-ENV ORTMODULE_ONNX_OPSET_VERSION=15
+ENV ORTMODULE_ONNX_OPSET_VERSION=14

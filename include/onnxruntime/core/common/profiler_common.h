@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include <unordered_map>
-#include <string>
 
 namespace onnxruntime {
 namespace profiling {
@@ -14,7 +13,6 @@ enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
   KERNEL_EVENT,
-  API_EVENT,
   EVENT_CATEGORY_MAX
 };
 
@@ -22,8 +20,7 @@ enum EventCategory {
 static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
     "Session",
     "Node",
-    "Kernel",
-    "Api"};
+    "Kernel"};
 
 // Timing record for all events.
 struct EventRecord {
@@ -61,9 +58,5 @@ class EpProfiler {
   virtual void Stop(uint64_t){};                                        // called after op stop, accept an id as argument to identify the op
 };
 
-// Demangle C++ symbols
-std::string demangle(const char* name);
-std::string demangle(const std::string& name);
-
-}  // namespace profiling
-}  // namespace onnxruntime
+}  //namespace profiling
+}  //namespace onnxruntime

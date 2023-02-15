@@ -143,7 +143,6 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
 
     WritableArray dims = Arguments.createArray();
     dims.pushInt(batchSize);
-    dims.pushInt(1);
     dims.pushInt(imageHeight);
     dims.pushInt(imageWidth);
     inputTensorMap.putArray("dims", dims);
@@ -156,7 +155,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     String data = Base64.encodeToString(imageByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", data);
 
-    inputDataMap.putMap("Input3", inputTensorMap);
+    inputDataMap.putMap("flatten_2_input", inputTensorMap);
 
     return inputDataMap;
   }
@@ -165,7 +164,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
   private WritableMap postprocess(ReadableMap result) throws Exception {
     String detectionResult = "";
 
-    ReadableMap outputTensor = result.getMap("Plus214_Output_0");
+    ReadableMap outputTensor = result.getMap("Identity");
 
     String outputData = outputTensor.getString("data");
     FloatBuffer buffer =

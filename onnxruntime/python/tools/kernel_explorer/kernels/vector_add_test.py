@@ -28,7 +28,8 @@ def dtype_to_funcs(dtype):
     return type_map[dtype]
 
 
-def run_vector_add(size, dtype, func):
+@pytest.mark.skip(reason="called by test_vector_add_all_sizes")
+def test_vector_add(size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(size).astype(dtype)
     y = np.random.rand(size).astype(dtype)
@@ -47,11 +48,11 @@ def run_vector_add(size, dtype, func):
 
 
 @pytest.mark.parametrize("size", [1, 3, 4, 16, 124, 125, 126, 127, 128, 129, 130, 131, 132, 1024])
-def test_vector_add(size):
+def test_vector_add_all_sizes(size):
     dtypes = ["float16", "float32"]
     for dtype in dtypes:
         for f in dtype_to_funcs(dtype):
-            run_vector_add(size, dtype, f)
+            test_vector_add(size, dtype, f)
 
 
 def profile_vector_add_func(size, dtype, func):

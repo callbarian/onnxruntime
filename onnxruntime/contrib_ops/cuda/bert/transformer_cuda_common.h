@@ -17,7 +17,7 @@ class AutoDestoryCudaEvent {
 
   ~AutoDestoryCudaEvent() {
     if (cuda_event_ != nullptr)
-      (void)cudaEventDestroy(cuda_event_);
+      cudaEventDestroy(cuda_event_);
   }
 
   cudaEvent_t& Get() {

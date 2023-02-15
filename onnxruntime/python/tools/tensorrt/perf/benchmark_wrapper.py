@@ -99,9 +99,6 @@ def main():
                 "false",
             ]
 
-            if args.track_memory:
-                command.append("-z")
-
             if ep == standalone_trt or ep == standalone_trt_fp16:
                 if args.running_mode == "validate":
                     continue

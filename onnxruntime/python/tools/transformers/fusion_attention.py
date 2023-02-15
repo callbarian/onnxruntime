@@ -207,10 +207,7 @@ class FusionAttention(Fusion):
         v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
 
         if q_weight is None:
-            print(
-                f"{q_matmul.input[1]} is not an initializer. "
-                "Please set do_constant_folding=True in torch.onnx.export to unblock attention fusion"
-            )
+            print(f"{q_matmul.input[1]} is not initializer. Please set do_constant_folding=True in torch.onnx.export")
             return None
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
@@ -230,8 +227,7 @@ class FusionAttention(Fusion):
 
         if hidden_size > 0 and hidden_size != qw_in_size:
             logger.warning(
-                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "
-                "Please provide a correct input hidden size or pass in 0"
+                f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide correct input hidden size or pass 0"
             )
 
         is_qkv_diff_dims = False
@@ -242,7 +238,7 @@ class FusionAttention(Fusion):
         # For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         qw_out_size = np.prod(qw.shape[1:])
-        kw_out_size = np.prod(kw.shape[1:])
+        kw_out_size = np.prod(qw.shape[1:])
         vw_out_size = np.prod(vw.shape[1:])
 
         qkv_weight_dim = 0
@@ -345,7 +341,7 @@ class FusionAttention(Fusion):
         )
         einsum_node = None
         if qkv_nodes is not None:
-            (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+            (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
             qkv_nodes = self.model.match_parent_path(

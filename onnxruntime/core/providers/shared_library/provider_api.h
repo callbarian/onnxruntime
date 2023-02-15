@@ -171,7 +171,6 @@ class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
-class AdamWOptimizerBase;
 }  // namespace contrib
 
 class UnsqueezeBase;
@@ -232,7 +231,6 @@ constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
-constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
@@ -254,22 +252,13 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
+                                                   const std::string& provider_type,
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
                                                    gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
-namespace profiling {
-
-  std::string demangle(const char* name);
-  std::string demangle(const std::string& name);
-
-};
-
 namespace logging {
-
-  unsigned int GetThreadId();
-  unsigned int GetProcessId();
 
 struct Category {
   static const char* onnxruntime;  ///< General output

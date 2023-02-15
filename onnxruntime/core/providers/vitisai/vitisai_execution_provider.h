@@ -25,7 +25,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 

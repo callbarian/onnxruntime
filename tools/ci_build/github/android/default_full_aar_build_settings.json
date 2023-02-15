@@ -14,7 +14,6 @@
         "--build_java",
         "--build_shared_lib",
         "--use_nnapi",
-        "--use_xnnpack",
         "--skip_tests"
     ]
 }

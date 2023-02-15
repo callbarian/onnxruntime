@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
@@ -12,8 +11,7 @@ namespace onnxruntime {
 // -----------------------------------------------------------------------
 
 template <typename ERRTYPE, bool THRW>
-std::conditional_t<THRW, void, Status> CudaCall(
-  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
+bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg = "");
 
 #define CUDA_CALL(expr) (CudaCall<cudaError, false>((expr), #expr, "CUDA", cudaSuccess))
 #define CUBLAS_CALL(expr) (CudaCall<cublasStatus_t, false>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS))

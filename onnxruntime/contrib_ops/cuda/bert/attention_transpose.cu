@@ -17,12 +17,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Modifications: add transpose kernels for TRT format
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "attention_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -96,9 +92,9 @@ __global__ void TransposeCtxLarge(const int H, const bool reversed_bs, const T* 
   }
 }
 
-Status LaunchTransCtx(cudaStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
+bool LaunchTransCtx(cudaStream_t stream,
+                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -120,12 +116,12 @@ Status LaunchTransCtx(cudaStream_t stream,
       TransposeCtxLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
 
-Status LaunchTransCtx(cudaStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
+bool LaunchTransCtx(cudaStream_t stream,
+                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
@@ -159,7 +155,7 @@ Status LaunchTransCtx(cudaStream_t stream,
     }
   }
 
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <typename T>
@@ -233,9 +229,9 @@ __global__ void TransposeQKVLarge(const int H, const bool reversed_bs, const T* 
   }
 }
 
-Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -256,13 +252,14 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
+
   }
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
 
-Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
@@ -295,8 +292,9 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       TransposeQKVLarge<half><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
-  return CUDA_CALL(cudaGetLastError());
+  return CUDA_CALL(cudaPeekAtLastError());
 }
+
 
 }  // namespace cuda
 }  // namespace contrib

@@ -37,14 +37,8 @@ class MultipleParametersModule(torch.nn.Module):
         return out
 
 
-def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name, device):
+def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name):
     """Generate test data using specified model/data and other configs."""
-
-    is_cuda = device == "cuda"
-
-    def _sync_stream():
-        if is_cuda is True:
-            torch.cuda.synchronize()
 
     def _run_step(model, input, target):
         prediction = model(input)
@@ -97,7 +91,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     for step in range(train_step_count):
         input, target = data_func()
         _run_step(pt_model, input, target)
-        _sync_stream()
+        torch.cuda.synchronize()
 
         for name, param in pt_model.named_parameters():
             if name not in p_dict:
@@ -116,7 +110,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
                 # Skip collecting the last step's gradients.
                 g_dict[name].append(_torch_tensor_to_str(param.grad.view(-1)))
 
-        _sync_stream()
+        torch.cuda.synchronize()
 
         for group in adamw_optimizer.param_groups:
             p_index = 0
@@ -135,7 +129,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         adamw_optimizer.step()
         adamw_optimizer.zero_grad()
 
-    _sync_stream()
+    torch.cuda.synchronize()
     data = {
         "Parameters": p_dict,
         "Gradients": g_dict,
@@ -143,19 +137,15 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         "Momentum2s": m2_dict,
     }
     import json
-    import os
 
-    directory = device
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-    with open(os.path.join(directory, json_file_name), "w", encoding="utf-8") as f:
+    with open(json_file_name, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-def generate_adamw_single_weight_tests(adam_mode, run_step_count, device):
+def generate_adamw_single_weight_tests(adam_mode, run_step_count):
     """Generate test data using specified mode of adamw."""
     seed = 8888
+    device = "cuda"
     batch_size, dimension_in, dimension_hidden = 2, 2, 3
 
     def _model_setup_func():
@@ -168,12 +158,13 @@ def generate_adamw_single_weight_tests(adam_mode, run_step_count, device):
         return input, target
 
     json_file_name = f"adamw_test_single_weight_mode_{adam_mode}.json"
-    generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode, json_file_name, device)
+    generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode, json_file_name)
 
 
-def generate_adamw_multiple_weights_tests(adam_mode, run_step_count, device):
+def generate_adamw_multiple_weights_tests(adam_mode, run_step_count):
     """Generate test data using specified mode of adamw."""
     seed = 6666
+    device = "cuda"
     batch_size, dimension_in, dimension_hidden, dim_out = 2, 2, 3, 2
 
     def _model_setup_func():
@@ -186,17 +177,15 @@ def generate_adamw_multiple_weights_tests(adam_mode, run_step_count, device):
         return input, target
 
     json_file_name = f"adamw_test_multiple_weights_mode_{adam_mode}.json"
-    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name, device)
+    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name)
 
 
 def main():
     """Main entry."""
-    device_candidates = ["cuda", "cpu"]
     test_data_step_count = 11
-    for device in device_candidates:
-        for adam_mode in range(0, 2):
-            generate_adamw_single_weight_tests(adam_mode, test_data_step_count, device)
-            generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count, device)
+    for adam_mode in range(0, 2):
+        generate_adamw_single_weight_tests(adam_mode, test_data_step_count)
+        generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ static std::unordered_set<std::string> providers_except_cpu = {
     kCudaExecutionProvider,
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
+    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,
@@ -36,9 +37,10 @@ static std::unordered_set<std::string> providers_except_cpu = {
     kArmNNExecutionProvider,
     kRocmExecutionProvider};
 
-static std::unordered_set<std::string> providers_except_cpu_gpu = {
+static std::unordered_set<std::string> providers_except_cpu_cuda = {
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
+    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,
@@ -47,7 +49,8 @@ static std::unordered_set<std::string> providers_except_cpu_gpu = {
     kDmlExecutionProvider,
     kMIGraphXExecutionProvider,
     kAclExecutionProvider,
-    kArmNNExecutionProvider};
+    kArmNNExecutionProvider,
+    kRocmExecutionProvider};
 
 
 void TestConvOp(const ConvOpAndTestAttributes& attributes,
@@ -55,7 +58,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<vector<int64_t>>& input_shapes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
-                const std::unordered_set<std::string>& excluded_provider_types = providers_except_cpu_gpu,
+                const std::unordered_set<std::string>& excluded_provider_types = providers_except_cpu_cuda,
                 bool weight_is_initializer = false,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "") {
@@ -159,12 +162,13 @@ TEST(FusedConvTest, Conv2D_Bias_Relu) {
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
-static std::unordered_set<std::string> providers_except_gpu = {
+static std::unordered_set<std::string> providers_except_cuda = {
     kCpuExecutionProvider,
     kDnnlExecutionProvider,
     kOpenVINOExecutionProvider,
+    kNupharExecutionProvider,
     kTvmExecutionProvider,
     kVitisAIExecutionProvider,
     kTensorrtExecutionProvider,
@@ -173,7 +177,8 @@ static std::unordered_set<std::string> providers_except_gpu = {
     kDmlExecutionProvider,
     kMIGraphXExecutionProvider,
     kAclExecutionProvider,
-    kArmNNExecutionProvider};
+    kArmNNExecutionProvider,
+    kRocmExecutionProvider};
 
 TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
   ConvOpAndTestAttributes attrs = {
@@ -196,7 +201,7 @@ TEST(FusedConvTest, Conv2D_Bias_Z_Relu) {
   vector<float> Z = {-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
   vector<int64_t> Z_shape = {1, 2, 2, 2};
   auto expected_vals = {12.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 28.0f};
-  TestConvOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, providers_except_gpu);
+  TestConvOp(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, providers_except_cuda);
 }
 
 #endif

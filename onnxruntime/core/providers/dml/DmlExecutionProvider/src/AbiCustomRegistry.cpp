@@ -544,7 +544,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         // Currently unsupported for external operators
         if (canAliasFirstInput ||
             supportsGraph ||
-            requiredInputCountForGraph)
+            requiredInputCountForGraph ||
+            requiredConstantCpuInputs)
         {
             ORT_THROW_HR(E_INVALIDARG);
         }

@@ -178,17 +178,9 @@ class BinarySelector : public BaseSelector {
 };
 
 // Variadic DQ nodes -> node -> Q
-class InputVariadicSelector : public BaseSelector {
+class VariadicSelector : public BaseSelector {
  public:
-  InputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
-
-  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
-};
-
-//  DQ -> node -> Variadic Q nodes
-class OutputVariadicSelector : public BaseSelector {
- public:
-  OutputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
+  VariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

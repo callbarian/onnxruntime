@@ -28,8 +28,7 @@ const char* RocmErrString<hipError_t>(hipError_t x) {
 }
 
 template <typename ERRTYPE, bool THRW>
-std::conditional_t<THRW, void, Status> RocmCall(
-  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
     try {
       char hostname[HOST_NAME_MAX];
@@ -43,28 +42,25 @@ std::conditional_t<THRW, void, Status> RocmCall(
                libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
                hostname,
                exprString, msg);
-      if constexpr (THRW) {
+      if (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, str);
       }
     } catch (const std::exception& e) {  // catch, log, and rethrow since HIP code sometimes hangs in destruction, so we'd never get to see the error
-      if constexpr (THRW) {
+      if (THRW) {
         ORT_THROW(e.what());
       } else {
         LOGS_DEFAULT(ERROR) << e.what();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
       }
     }
+    return false;
   }
-  if constexpr (!THRW) {
-    return Status::OK();
-  }
+  return true;
 }
 
-template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template bool RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template bool RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 
 }  // namespace onnxruntime

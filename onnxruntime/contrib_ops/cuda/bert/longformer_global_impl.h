@@ -8,11 +8,10 @@ namespace contrib {
 namespace cuda {
 
 // Size of global Index scratch in bytes.
-size_t GetGlobalScratchSize(int sequence_length);
+size_t GetGlobalScratchSize(int batch_size, int sequence_length);
 
 // Find the global attention indices and number of global attention tokens
-Status BuildGlobalIndex(
-    const cudaDeviceProp& device_prop,
+void BuildGlobalIndex(
     cudaStream_t stream,
     const int* global_attention,
     int batch_size,

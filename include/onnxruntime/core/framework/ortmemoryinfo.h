@@ -3,10 +3,6 @@
 
 #pragma once
 
-#include <string_view>
-
-#include "core/common/hash_combine.h"
-
 struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
@@ -42,13 +38,17 @@ struct OrtMemoryInfo {
     return strcmp(name, other.name) < 0;
   }
 
+  static void HashCombine(size_t h, size_t& seed) {
+    seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  }
+
   // This is to make OrtMemoryInfo a valid key in hash tables
   // we ignore device id
   size_t Hash() const {
     auto h = std::hash<int>()(alloc_type);
-    onnxruntime::HashCombine(mem_type, h);
-    onnxruntime::HashCombine(id, h);
-    onnxruntime::HashCombine<std::string_view>(name, h);
+    HashCombine(std::hash<int>()(mem_type), h);
+    HashCombine(std::hash<int>()(id), h);
+    HashCombine(std::hash<const char*>()(name), h);
     return h;
   }
 

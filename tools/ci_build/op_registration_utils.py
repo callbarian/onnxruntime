@@ -6,7 +6,6 @@ Utilities to help process files containing kernel registrations.
 """
 
 import os
-import pathlib
 import sys
 import typing
 
@@ -15,12 +14,11 @@ from logger import get_logger
 log = get_logger("op_registration_utils")
 
 
-def map_ort_constant_to_domain(ort_constant_name: str, allow_unknown_constant: bool = True):
+def map_ort_constant_to_domain(ort_constant_name: str):
     """
     Map the name of the internal ONNX Runtime constant used in operator kernel registrations to the domain name
     used in ONNX models and configuration files.
     :param ort_constant_name: ONNX Runtime constant name for the domain from a kernel registration entry.
-    :param allow_unknown_constant: Whether an unknown constant is allowed or treated as an error.
     :return: String with public domain name.
     """
 
@@ -38,13 +36,9 @@ def map_ort_constant_to_domain(ort_constant_name: str, allow_unknown_constant: b
 
     if ort_constant_name in constant_to_domain_map:
         return constant_to_domain_map[ort_constant_name]
-
-    unknown_constant_message = "Unknown domain for ONNX Runtime constant of {}.".format(ort_constant_name)
-    if not allow_unknown_constant:
-        raise ValueError(unknown_constant_message)
-
-    log.warning(unknown_constant_message)
-    return None
+    else:
+        log.warning("Unknown domain for ONNX Runtime constant of {}.".format(ort_constant_name))
+        return None
 
 
 def get_kernel_registration_files(ort_root=None, include_cuda=False):
@@ -210,9 +204,7 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
     return offset + 1
 
 
-def process_kernel_registration_file(
-    filename: typing.Union[str, pathlib.Path], registration_processor: RegistrationProcessor
-):
+def process_kernel_registration_file(filename: str, registration_processor: RegistrationProcessor):
     """
     Process a kernel registration file using registration_processor.
     :param filename: Path to file containing kernel registrations.
@@ -239,5 +231,3 @@ def process_kernel_registration_file(
         else:
             registration_processor.process_other_line(line)
             offset += 1
-
-    return True

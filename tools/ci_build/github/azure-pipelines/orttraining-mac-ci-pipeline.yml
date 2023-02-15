@@ -1,3 +1,5 @@
+trigger: none
+
 jobs:
 - template: templates/mac-ci.yml
   parameters:
@@ -9,7 +11,7 @@ jobs:
       --skip_submodule_sync
       --parallel
       --build_shared_lib
-      --config RelWithDebInfo
+      --config Debug RelWithDebInfo
       --enable_training
     DoNugetPack: 'false'
     # Enable unreleased onnx opsets in CI builds

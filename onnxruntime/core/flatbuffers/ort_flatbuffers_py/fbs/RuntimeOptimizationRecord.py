@@ -45,28 +45,33 @@ class RuntimeOptimizationRecord(object):
         return None
 
     # RuntimeOptimizationRecord
-    def ProducedOpIds(self, j):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
+    def ProducedNodes(self, j):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
-            a = self._tab.Vector(o)
-            return self._tab.String(a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
-        return ""
+            x = self._tab.Vector(o)
+            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
+            x = self._tab.Indirect(x)
+            from ort_flatbuffers_py.fbs.NodeIndexAndKernelDefHash import NodeIndexAndKernelDefHash
+            obj = NodeIndexAndKernelDefHash()
+            obj.Init(self._tab.Bytes, x)
+            return obj
+        return None
 
     # RuntimeOptimizationRecord
-    def ProducedOpIdsLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
+    def ProducedNodesLength(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # RuntimeOptimizationRecord
-    def ProducedOpIdsIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
+    def ProducedNodesIsNone(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         return o == 0
 
-def RuntimeOptimizationRecordStart(builder): builder.StartObject(4)
+def RuntimeOptimizationRecordStart(builder): builder.StartObject(3)
 def RuntimeOptimizationRecordAddActionId(builder, actionId): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(actionId), 0)
 def RuntimeOptimizationRecordAddNodesToOptimizeIndices(builder, nodesToOptimizeIndices): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(nodesToOptimizeIndices), 0)
-def RuntimeOptimizationRecordAddProducedOpIds(builder, producedOpIds): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(producedOpIds), 0)
-def RuntimeOptimizationRecordStartProducedOpIdsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def RuntimeOptimizationRecordAddProducedNodes(builder, producedNodes): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(producedNodes), 0)
+def RuntimeOptimizationRecordStartProducedNodesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
 def RuntimeOptimizationRecordEnd(builder): return builder.EndObject()

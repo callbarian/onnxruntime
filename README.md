@@ -1,4 +1,11 @@
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
+** MD.AI Begin **
+Edit onnxruntime\cmake\external\onnx\onnx\onnx-ml.proto3 and onnx-ml.proto as following
+Add "string cached_algo = 8"
+![image](https://github.com/callbarian/onnxruntime/assets/50005149/e8ee3bc5-e51a-4bde-bbd6-a236863aed96)
+Because this is an external module, we are not keeping in track of the update 
+
+** MD.AI End **
 
 **ONNX Runtime is a cross-platform inference and training machine-learning accelerator**.
 
